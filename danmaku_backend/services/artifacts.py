@@ -1,0 +1,592 @@
+from __future__ import annotations
+
+import csv
+import hashlib
+import json
+import os
+import re
+import tempfile
+import uuid
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Optional
+
+from werkzeug.utils import secure_filename
+
+from danmaku_backend.services.bilibili import BV_RE
+from danmaku_backend.services.database import connect_state_db, ensure_state_db
+from danmaku_backend.settings import (
+    ARTIFACT_RETENTION_SECONDS,
+    CLEANUP_INTERVAL_SECONDS,
+    DOWNLOAD_DIR,
+    STATE_DB_PATH,
+    SUBTITLE_DIR,
+)
+
+
+ANALYSIS_ID_RE = r"^[0-9a-f]{32}$"
+DANMAKU_CACHE_WINDOW_SECONDS = 3 * 60 * 60
+
+
+@dataclass(frozen=True)
+class DanmakuExport:
+    analysis_id: str
+    bvid: str
+    csv_filename: str
+    txt_filename: str
+    count: int
+    created_at: str
+
+
+class ArtifactStore:
+    def __init__(
+        self,
+        download_dir: Path = DOWNLOAD_DIR,
+        subtitle_dir: Path = SUBTITLE_DIR,
+        db_path: Path = STATE_DB_PATH,
+    ):
+        self.download_dir = Path(download_dir)
+        self.subtitle_dir = Path(subtitle_dir)
+        self.db_path = Path(db_path)
+        self.index_dir = self.download_dir.parent / ".artifact-index"
+        self.manifest_path = self.index_dir / "manifest.jsonl"
+        self.cleanup_stamp_path = self.index_dir / "last_cleanup"
+
+    def ensure(self) -> None:
+        self.download_dir.mkdir(parents=True, exist_ok=True)
+        self.subtitle_dir.mkdir(parents=True, exist_ok=True)
+        self.index_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(self.download_dir, 0o755)
+        os.chmod(self.subtitle_dir, 0o755)
+        os.chmod(self.index_dir, 0o755)
+        ensure_state_db(self.db_path)
+        self._migrate_legacy_manifest_once()
+
+    def _validate_bvid(self, bvid: str) -> str:
+        if not BV_RE.fullmatch(bvid or ""):
+            raise ValueError("invalid bvid")
+        return bvid
+
+    def _validate_analysis_id(self, analysis_id: str | None) -> str | None:
+        if analysis_id is None or analysis_id == "":
+            return None
+        if not re.fullmatch(ANALYSIS_ID_RE, analysis_id):
+            raise ValueError("invalid analysis_id")
+        return analysis_id
+
+    def _available_pair(self, bvid: str) -> tuple[Path, Path]:
+        safe_bvid = secure_filename(self._validate_bvid(bvid))
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        stem = f"danmaku_{safe_bvid}_{timestamp}_{uuid.uuid4().hex[:8]}"
+        csv_path = self.download_dir / f"{stem}.csv"
+        txt_path = self.download_dir / f"{stem}.txt"
+        suffix = 1
+        while csv_path.exists() or txt_path.exists():
+            csv_path = self.download_dir / f"{stem}_{suffix}.csv"
+            txt_path = self.download_dir / f"{stem}_{suffix}.txt"
+            suffix += 1
+        return csv_path, txt_path
+
+    def save_danmaku_files(self, bvid: str, danmaku_list: list[dict[str, Any]]) -> DanmakuExport:
+        self.ensure()
+        bvid = self._validate_bvid(bvid)
+        csv_path, txt_path = self._available_pair(bvid)
+        analysis_id = uuid.uuid4().hex
+
+        csv_tmp = self._temp_path(self.download_dir)
+        txt_tmp = self._temp_path(self.download_dir)
+        with csv_tmp.open("w", encoding="utf-8-sig", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["弹幕内容", "出现时间(秒)", "发送时间", "类型", "字体大小", "颜色", "发送者ID"])
+            for danmaku in danmaku_list:
+                writer.writerow(
+                    [
+                        danmaku["text"],
+                        danmaku["appear_time"],
+                        danmaku["send_time"],
+                        danmaku["type"],
+                        danmaku["size"],
+                        danmaku["color"],
+                        danmaku["sender"],
+                    ]
+                )
+
+        with txt_tmp.open("w", encoding="utf-8") as file:
+            for danmaku in danmaku_list:
+                minutes = int(danmaku["appear_time"]) // 60
+                seconds = int(danmaku["appear_time"]) % 60
+                file.write(f"[{minutes:02d}:{seconds:02d}] {danmaku['text']}\n")
+
+        os.replace(csv_tmp, csv_path)
+        os.replace(txt_tmp, txt_path)
+        os.chmod(csv_path, 0o644)
+        os.chmod(txt_path, 0o644)
+        record = DanmakuExport(
+            analysis_id=analysis_id,
+            bvid=bvid,
+            csv_filename=csv_path.name,
+            txt_filename=txt_path.name,
+            count=len(danmaku_list),
+            created_at=datetime.now().astimezone().isoformat(timespec="seconds"),
+        )
+        try:
+            self._upsert_record(asdict(record))
+        except Exception:
+            for path in (csv_path, txt_path):
+                try:
+                    if path.exists():
+                        path.unlink()
+                except Exception:
+                    pass
+            raise
+        self.cleanup_if_due()
+        return record
+
+    def latest_cached_danmaku_record(
+        self,
+        bvid: str,
+        max_age_seconds: int = DANMAKU_CACHE_WINDOW_SECONDS,
+    ) -> dict[str, Any] | None:
+        safe_bvid = secure_filename(self._validate_bvid(bvid))
+        self.ensure()
+        cutoff = datetime.now().astimezone() - timedelta(seconds=max_age_seconds)
+        for record in self.records_for_bvid(safe_bvid):
+            created_at = self._created_time(record)
+            if not created_at or created_at < cutoff:
+                continue
+            csv_name = record.get("csv_filename")
+            txt_name = record.get("txt_filename")
+            if not csv_name or not txt_name:
+                continue
+            csv_path = self.download_dir / str(csv_name)
+            txt_path = self.download_dir / str(txt_name)
+            if csv_path.exists() and txt_path.exists():
+                return record
+        return None
+
+    def latest_danmaku_txt(self, bvid: str, analysis_id: str | None = None) -> Optional[Path]:
+        self.ensure()
+        safe_bvid = secure_filename(self._validate_bvid(bvid))
+        analysis_id = self._validate_analysis_id(analysis_id)
+        if analysis_id:
+            record = self.get_record(analysis_id)
+            if record and record.get("bvid") == safe_bvid:
+                path = self.download_dir / str(record.get("txt_filename", ""))
+                return path if path.exists() else None
+            return None
+
+        record = self.latest_record_for_bvid(safe_bvid)
+        if record:
+            path = self.download_dir / str(record.get("txt_filename", ""))
+            if path.exists():
+                return path
+
+        return None
+
+    def latest_subtitle(self, bvid: str, analysis_id: str | None = None) -> Optional[Path]:
+        self.ensure()
+        safe_bvid = secure_filename(self._validate_bvid(bvid))
+        analysis_id = self._validate_analysis_id(analysis_id)
+        if analysis_id:
+            record = self.get_record(analysis_id)
+            if record and record.get("bvid") == safe_bvid and record.get("subtitle_filename"):
+                path = self.subtitle_dir / str(record["subtitle_filename"])
+                return path if path.exists() else None
+            return None
+
+        record = self.latest_record_for_bvid(safe_bvid, require_subtitle=True)
+        if record:
+            path = self.subtitle_dir / str(record.get("subtitle_filename", ""))
+            if path.exists():
+                return path
+
+        return None
+
+    def save_subtitle(self, file, bvid: str, analysis_id: str | None = None) -> Path:
+        self.ensure()
+        safe_bvid = secure_filename(self._validate_bvid(bvid))
+        analysis_id = self._validate_analysis_id(analysis_id)
+        original_name = self._normalize_original_filename(file.filename or "")
+        if not original_name.lower().endswith(".txt"):
+            raise ValueError("only txt subtitles are supported")
+        if analysis_id:
+            record = self.get_record(analysis_id)
+            if not record or record.get("bvid") != safe_bvid:
+                raise ValueError("analysis_id does not match bvid")
+        else:
+            raise ValueError("analysis_id is required")
+
+        content = file.read()
+        try:
+            file.stream.seek(0)
+        except Exception:
+            pass
+
+        matched_record = self._find_matching_subtitle_record(safe_bvid, content)
+        if matched_record and matched_record.get("subtitle_filename"):
+            reused_path = self.subtitle_dir / str(matched_record["subtitle_filename"])
+            if reused_path.exists():
+                self._merge_record(
+                    analysis_id,
+                    {
+                        "subtitle_filename": reused_path.name,
+                        "subtitle_original_filename": original_name,
+                        "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                    },
+                )
+                self.cleanup_if_due()
+                return reused_path
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = self.subtitle_dir / f"subtitle_{safe_bvid}_{timestamp}_{uuid.uuid4().hex[:8]}.txt"
+        suffix = 1
+        while path.exists():
+            path = self.subtitle_dir / f"subtitle_{safe_bvid}_{timestamp}_{suffix}.txt"
+            suffix += 1
+        tmp_path = self._temp_path(self.subtitle_dir)
+        tmp_path.write_bytes(content)
+        os.replace(tmp_path, path)
+        os.chmod(path, 0o644)
+        try:
+            self._merge_record(
+                analysis_id,
+                {
+                    "subtitle_filename": path.name,
+                    "subtitle_original_filename": original_name,
+                    "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                },
+            )
+        except Exception:
+            try:
+                if path.exists():
+                    path.unlink()
+            except Exception:
+                pass
+            raise
+        self.cleanup_if_due()
+        return path
+
+    def safe_download_name(self, filename: str) -> str:
+        safe_name = secure_filename(filename or "")
+        if not safe_name or safe_name != filename:
+            raise ValueError("invalid filename")
+        return safe_name
+
+    def get_record(self, analysis_id: str) -> dict[str, Any] | None:
+        analysis_id = self._validate_analysis_id(analysis_id)
+        if not analysis_id:
+            return None
+        self.ensure()
+        with connect_state_db(self.db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT analysis_id, bvid, csv_filename, txt_filename, subtitle_filename,
+                       subtitle_original_filename, count, created_at, updated_at
+                FROM artifact_records
+                WHERE analysis_id = ?
+                """,
+                (analysis_id,),
+            ).fetchone()
+        return self._row_to_record(row) if row else None
+
+    def latest_record_for_bvid(self, bvid: str, require_subtitle: bool = False) -> dict[str, Any] | None:
+        safe_bvid = secure_filename(self._validate_bvid(bvid))
+        self.ensure()
+        sql = """
+            SELECT analysis_id, bvid, csv_filename, txt_filename, subtitle_filename,
+                   subtitle_original_filename, count, created_at, updated_at
+            FROM artifact_records
+            WHERE bvid = ?
+        """
+        if require_subtitle:
+            sql += " AND subtitle_filename IS NOT NULL AND subtitle_filename != ''"
+        sql += " ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 1"
+        with connect_state_db(self.db_path) as conn:
+            row = conn.execute(sql, (safe_bvid,)).fetchone()
+        return self._row_to_record(row) if row else None
+
+    def cleanup_if_due(
+        self,
+        retention_seconds: int = ARTIFACT_RETENTION_SECONDS,
+        interval_seconds: int = CLEANUP_INTERVAL_SECONDS,
+    ) -> dict[str, Any]:
+        self.ensure()
+        now = datetime.now().astimezone()
+        last_run = self._meta_get("artifacts_last_cleanup")
+        if last_run:
+            try:
+                parsed = datetime.fromisoformat(last_run)
+                if (now - parsed).total_seconds() < interval_seconds:
+                    return {"ran": False, "deleted_files": 0, "deleted_records": 0}
+            except Exception:
+                pass
+        result = self.cleanup(retention_seconds)
+        self._meta_set("artifacts_last_cleanup", now.isoformat(timespec="seconds"))
+        return {"ran": True, **result}
+
+    def cleanup(self, retention_seconds: int = ARTIFACT_RETENTION_SECONDS) -> dict[str, Any]:
+        self.ensure()
+        cutoff = datetime.now().astimezone() - timedelta(seconds=retention_seconds)
+        records = self._records_by_id()
+        deleted_records = 0
+        deleted_files = 0
+        delete_ids: list[str] = []
+        for record in records.values():
+            record_time = self._record_time(record)
+            if not record_time or record_time >= cutoff:
+                continue
+            deleted_records += 1
+            delete_ids.append(str(record["analysis_id"]))
+            for key, folder in (
+                ("csv_filename", self.download_dir),
+                ("txt_filename", self.download_dir),
+                ("subtitle_filename", self.subtitle_dir),
+            ):
+                name = record.get(key)
+                if not name:
+                    continue
+                try:
+                    path = folder / self.safe_download_name(str(name))
+                except ValueError:
+                    continue
+                if path.exists():
+                    path.unlink()
+                    deleted_files += 1
+        if delete_ids:
+            with connect_state_db(self.db_path) as conn:
+                conn.executemany("DELETE FROM artifact_records WHERE analysis_id = ?", [(item,) for item in delete_ids])
+        deleted_files += self._cleanup_orphan_files(records, cutoff)
+        return {"deleted_files": deleted_files, "deleted_records": deleted_records}
+
+    @staticmethod
+    def _temp_path(directory: Path) -> Path:
+        fd, name = tempfile.mkstemp(prefix=".tmp-", dir=str(directory))
+        os.close(fd)
+        return Path(name)
+
+    def _merge_record(self, analysis_id: str, updates: dict[str, Any]) -> None:
+        record = self.get_record(analysis_id)
+        if not record:
+            raise ValueError("analysis_id not found")
+        merged = dict(record)
+        merged.update(updates)
+        self._upsert_record(merged)
+
+    def _records_by_id(self) -> dict[str, dict[str, Any]]:
+        self.ensure()
+        with connect_state_db(self.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT analysis_id, bvid, csv_filename, txt_filename, subtitle_filename,
+                       subtitle_original_filename, count, created_at, updated_at
+                FROM artifact_records
+                """
+            ).fetchall()
+        return {row["analysis_id"]: self._row_to_record(row) for row in rows}
+
+    def records_for_bvid(self, bvid: str, require_subtitle: bool = False) -> list[dict[str, Any]]:
+        safe_bvid = secure_filename(self._validate_bvid(bvid))
+        self.ensure()
+        sql = """
+            SELECT analysis_id, bvid, csv_filename, txt_filename, subtitle_filename,
+                   subtitle_original_filename, count, created_at, updated_at
+            FROM artifact_records
+            WHERE bvid = ?
+        """
+        if require_subtitle:
+            sql += " AND subtitle_filename IS NOT NULL AND subtitle_filename != ''"
+        sql += " ORDER BY created_at DESC"
+        with connect_state_db(self.db_path) as conn:
+            rows = conn.execute(sql, (safe_bvid,)).fetchall()
+        return [self._row_to_record(row) for row in rows]
+
+    def _cleanup_orphan_files(self, records: dict[str, dict[str, Any]], cutoff: datetime) -> int:
+        referenced: set[Path] = set()
+        for record in records.values():
+            for key, folder in (
+                ("csv_filename", self.download_dir),
+                ("txt_filename", self.download_dir),
+                ("subtitle_filename", self.subtitle_dir),
+            ):
+                name = record.get(key)
+                if not name:
+                    continue
+                try:
+                    referenced.add((folder / self.safe_download_name(str(name))).resolve())
+                except ValueError:
+                    continue
+
+        deleted = 0
+        patterns = (
+            (self.download_dir, "danmaku_*.csv"),
+            (self.download_dir, "danmaku_*.txt"),
+            (self.subtitle_dir, "subtitle_*.txt"),
+            (self.download_dir, ".tmp-*"),
+            (self.subtitle_dir, ".tmp-*"),
+        )
+        for folder, pattern in patterns:
+            if not folder.exists():
+                continue
+            for path in folder.glob(pattern):
+                try:
+                    if path.resolve() in referenced:
+                        continue
+                    modified_at = datetime.fromtimestamp(path.stat().st_mtime).astimezone()
+                    if modified_at >= cutoff:
+                        continue
+                    path.unlink()
+                    deleted += 1
+                except Exception:
+                    continue
+        return deleted
+
+    def _upsert_record(self, record: dict[str, Any]) -> None:
+        analysis_id = self._validate_analysis_id(record.get("analysis_id"))
+        if not analysis_id:
+            raise ValueError("invalid analysis_id")
+        bvid = secure_filename(self._validate_bvid(str(record.get("bvid") or "")))
+        created_at = str(record.get("created_at") or datetime.now().astimezone().isoformat(timespec="seconds"))
+        updated_at = str(record.get("updated_at") or created_at)
+        count = int(record.get("count") or 0)
+        csv_filename = self._normalize_filename(record.get("csv_filename"))
+        txt_filename = self._normalize_filename(record.get("txt_filename"))
+        subtitle_filename = self._normalize_filename(record.get("subtitle_filename"))
+        subtitle_original_filename = self._normalize_original_filename(
+            record.get("subtitle_original_filename")
+        )
+        with connect_state_db(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO artifact_records (
+                    analysis_id, bvid, csv_filename, txt_filename, subtitle_filename,
+                    subtitle_original_filename, count, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(analysis_id) DO UPDATE SET
+                    bvid = excluded.bvid,
+                    csv_filename = excluded.csv_filename,
+                    txt_filename = excluded.txt_filename,
+                    subtitle_filename = excluded.subtitle_filename,
+                    subtitle_original_filename = excluded.subtitle_original_filename,
+                    count = excluded.count,
+                    created_at = excluded.created_at,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    analysis_id,
+                    bvid,
+                    csv_filename,
+                    txt_filename,
+                    subtitle_filename,
+                    subtitle_original_filename,
+                    count,
+                    created_at,
+                    updated_at,
+                ),
+            )
+
+    @staticmethod
+    def _created_time(record: dict[str, Any]) -> datetime | None:
+        raw = record.get("created_at")
+        if not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(raw))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.astimezone()
+
+    @staticmethod
+    def _record_time(record: dict[str, Any]) -> datetime | None:
+        raw = record.get("updated_at") or record.get("created_at")
+        if not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(raw))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.astimezone()
+
+    def _migrate_legacy_manifest_once(self) -> None:
+        if self._meta_get("legacy_artifacts_migrated") == "1":
+            return
+        if self.manifest_path.exists():
+            with self.manifest_path.open("r", encoding="utf-8") as manifest:
+                for line in manifest:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    try:
+                        self._upsert_record(record)
+                    except Exception:
+                        continue
+        self._meta_set("legacy_artifacts_migrated", "1")
+
+    def _meta_get(self, key: str) -> str | None:
+        with connect_state_db(self.db_path) as conn:
+            row = conn.execute("SELECT value FROM state_meta WHERE key = ?", (key,)).fetchone()
+        return str(row["value"]) if row else None
+
+    def _meta_set(self, key: str, value: str) -> None:
+        with connect_state_db(self.db_path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO state_meta(key, value) VALUES (?, ?)",
+                (key, value),
+            )
+
+    @staticmethod
+    def _row_to_record(row) -> dict[str, Any]:
+        record = {
+            "analysis_id": row["analysis_id"],
+            "bvid": row["bvid"],
+            "count": int(row["count"]),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+        for key in ("csv_filename", "txt_filename", "subtitle_filename", "subtitle_original_filename"):
+            if row[key] is not None:
+                record[key] = row[key]
+        return record
+
+    @staticmethod
+    def _normalize_filename(value: Any) -> str | None:
+        if value in (None, ""):
+            return None
+        name = secure_filename(str(value))
+        if not name or name != str(value):
+            raise ValueError("invalid filename")
+        return name
+
+    @staticmethod
+    def _normalize_original_filename(value: Any) -> str | None:
+        if value in (None, ""):
+            return None
+        name = str(value).replace("\\", "/").split("/")[-1].strip()
+        if not name or name in {".", ".."} or "\x00" in name:
+            raise ValueError("invalid filename")
+        return name
+
+    def _find_matching_subtitle_record(self, bvid: str, content: bytes) -> dict[str, Any] | None:
+        target_digest = hashlib.md5(content).hexdigest()
+        for record in self.records_for_bvid(bvid, require_subtitle=True):
+            filename = record.get("subtitle_filename")
+            if not filename:
+                continue
+            path = self.subtitle_dir / str(filename)
+            if not path.exists():
+                continue
+            try:
+                existing_digest = hashlib.md5(path.read_bytes()).hexdigest()
+            except Exception:
+                continue
+            if existing_digest == target_digest:
+                return record
+        return None
+
+
+default_store = ArtifactStore()

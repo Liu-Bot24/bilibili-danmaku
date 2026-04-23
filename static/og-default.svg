@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fffaf1"/>
+      <stop offset="0.55" stop-color="#f8f6f1"/>
+      <stop offset="1" stop-color="#eef4f1"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0978a0"/>
+      <stop offset="1" stop-color="#00a1d6"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="22" stdDeviation="28" flood-color="#1c1f24" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <g opacity="0.42" stroke="#171a1f" stroke-width="1">
+    <path d="M0 120h1200M0 220h1200M0 320h1200M0 420h1200M0 520h1200"/>
+    <path d="M100 0v630M220 0v630M340 0v630M460 0v630M580 0v630M700 0v630M820 0v630M940 0v630M1060 0v630"/>
+  </g>
+  <rect x="96" y="86" width="1008" height="458" rx="52" fill="rgba(255,255,255,0.78)" filter="url(#shadow)"/>
+  <g transform="translate(150 146)">
+    <rect width="76" height="76" rx="22" fill="url(#mark)"/>
+    <circle cx="38" cy="38" r="22" fill="none" stroke="rgba(255,255,255,0.76)" stroke-width="4"/>
+  </g>
+  <text x="252" y="193" fill="#171a1f" font-family="Noto Sans SC, PingFang SC, sans-serif" font-size="36" font-weight="500">小刘BOT danmuku</text>
+  <text x="150" y="338" fill="#171a1f" font-family="Noto Sans SC, PingFang SC, sans-serif" font-size="68" font-weight="800">B站弹幕查询、解析与下载</text>
+  <text x="150" y="418" fill="rgba(23,26,31,0.66)" font-family="Noto Sans SC, PingFang SC, sans-serif" font-size="34" font-weight="500">弹幕文件下载 · 数据可视化 · AI 智能分析</text>
+  <rect x="150" y="468" width="246" height="64" rx="32" fill="#00a1d6"/>
+  <text x="198" y="510" fill="#fff" font-family="Noto Sans SC, PingFang SC, sans-serif" font-size="28" font-weight="700">danmu.liu-qi.cn</text>
+</svg>
