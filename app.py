@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from html import escape
 import hmac
 import json
 import logging
@@ -10,7 +11,7 @@ import secrets
 import threading
 import time
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import requests
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory, stream_with_context
@@ -30,7 +31,6 @@ from danmaku_backend.services.jobs import TERMINAL_STATUSES, default_job_store
 from danmaku_backend.services.reports import default_report_store
 from danmaku_backend.services.stats import analyze_danmaku
 from danmaku_backend.settings import (
-    DOWNLOAD_DIR,
     LOG_FILE,
     LOG_STREAM_MAX_AGE_SECONDS,
     LOG_STREAM_MAX_PER_IP,
@@ -67,7 +67,103 @@ _RATE_LIMITS = {
 _CSRF_COOKIE = "bili_danmaku_csrf"
 _CSRF_HEADER = "X-Bili-Danmaku-CSRF"
 SITE_BASE_URL = "https://danmu.liu-qi.cn"
+PLUGIN_VERSION = "1.0.2"
+PLUGIN_DOWNLOAD_FILENAME = "bili-lite-subtitle-store-upload-1.0.2.zip"
+PLUGIN_DOWNLOAD_PATH = f"/static/plugin/{PLUGIN_DOWNLOAD_FILENAME}"
+PLUGIN_GITHUB_URL = "https://github.com/Liu-Bot24/bili-lite-subtitle"
+INDEXNOW_KEY = "782ce4166c93b3da40b54acae9b34686"
+SOGOU_SITE_VERIFICATION = "d5smJSzPUQ"
+SITEMAP_PAGES = (
+    {"path": "/", "lastmod": "2026-04-29", "changefreq": "weekly", "priority": "1.0"},
+    {"path": "/plugin", "lastmod": "2026-04-30", "changefreq": "monthly", "priority": "0.8"},
+    {"path": "/faq", "lastmod": "2026-04-29", "changefreq": "monthly", "priority": "0.8"},
+)
 set_job_event_writer(default_job_store.add_event)
+
+FAQ_CONTENT = [
+    {
+        "category": "基础使用",
+        "items": [
+            {
+                "question": "本站是否收费？",
+                "answer": "本站目前为免费公益站点，不设付费项目；弹幕下载、统计图表和 AI 分析均可免费使用。受服务器负载和第三方 API 可用性影响，高峰时段的 AI 分析可能排队、超时或失败。需要更稳定的分析体验时，可在页面中自主配置 OpenAI 兼容 API。",
+            },
+            {
+                "question": "本站支持哪些 Bilibili 视频弹幕？",
+                "answer": "本站支持查询公开可访问的 Bilibili 视频弹幕。可输入 BV 号、标准视频链接，或带参数的视频链接；常见格式包括 BV1w7411Y77t 和 https://www.bilibili.com/video/BV1w7411Y77t。",
+            },
+            {
+                "question": "只有视频链接，没有 BV 号可以使用吗？",
+                "answer": "可以。将 Bilibili 视频详情页链接粘贴到查询框后，本站会自动提取 BV 号并解析弹幕。为提高解析成功率，建议使用视频详情页的完整链接。",
+            },
+        ],
+    },
+    {
+        "category": "弹幕下载与格式",
+        "items": [
+            {
+                "question": "弹幕支持哪些下载格式？",
+                "answer": "解析完成后可下载 CSV 和 TXT 两种格式。CSV 保留更完整的弹幕字段，适合表格筛选、统计和二次分析；TXT 更轻量，适合快速查看、复制或交给文本处理流程。",
+            },
+            {
+                "question": "下载的弹幕文件里通常包含哪些信息？",
+                "answer": "下载文件会保留弹幕文本及其对应时间等解析信息。TXT 文件做了简化，主要保留时间戳和文本内容，便于复制、阅读和进行 AI 分析；如需自行做完整字段统计、筛选或全维度弹幕分析，建议下载 CSV 版本。",
+            },
+        ],
+    },
+    {
+        "category": "统计图表",
+        "items": [
+            {
+                "question": "弹幕密度分布和词云适合用来做什么？",
+                "answer": "弹幕密度分布用于定位视频中的高互动时间段，词云用于概览观众反复提到的关键词。两者适合用于视频复盘、选题观察、内容研究和评论区趋势判断。",
+            },
+            {
+                "question": "为什么有些视频的弹幕统计较少？",
+                "answer": "弹幕统计结果取决于公开可获取的数据范围。视频发布时间较近、弹幕总量较少、存在访问限制，或 Bilibili 上游接口临时不可用时，本站可展示的数据也会相应减少。",
+            },
+        ],
+    },
+    {
+        "category": "AI 弹幕分析",
+        "items": [
+            {
+                "question": "弹幕内容分析和字幕深度分析有什么区别？",
+                "answer": "弹幕内容分析基于弹幕数据生成观众态度、互动特征和热点话题；字幕深度分析会在上传字幕 TXT 后，将字幕内容与弹幕数据结合分析，更适合用于视频结构复盘和关键片段总结。",
+            },
+            {
+                "question": "没有字幕文件还能进行 AI 分析吗？",
+                "answer": "可以，仍可进行弹幕内容分析。字幕深度分析需要额外上传 TXT 字幕文件，因为该功能需要同时读取字幕文本和弹幕数据。",
+            },
+        ],
+    },
+    {
+        "category": "自主配置 API 与隐私",
+        "items": [
+            {
+                "question": "自主配置 API Key 会保存到服务器吗？",
+                "answer": "不会。自主配置 API 的 Base URL、模型名和 API Key 仅保存在当前浏览器的本地存储中；分析时由浏览器直接请求你配置的 OpenAI 兼容接口，配置内容不会写入本站服务器。清理浏览器数据、更换设备或使用无痕模式时，这些配置可能会失效。",
+            },
+            {
+                "question": "内置 AI 分析和自主配置 API 有什么区别？",
+                "answer": "内置 AI 分析使用本站服务器端配置，无需填写 API Key，适合直接使用；分析任务会进入公共处理队列，负载较高时可能等待或超时。启用自主配置 API 后，本站服务器只负责整理弹幕、字幕和分析提示词，浏览器会直接调用你填写的 OpenAI 兼容接口。自主配置 API 支持设置 Base URL、模型名、API Key、上下文长度、最大输出 tokens、全量/均衡采样和样本数量等参数；如果你的接口额度、响应速度或上下文窗口更充足，通常可以改善排队等待、超时概率、模型可选范围和长视频分析承载能力。",
+            },
+        ],
+    },
+    {
+        "category": "分享报告与故障处理",
+        "items": [
+            {
+                "question": "分享报告链接会保存哪些内容？",
+                "answer": "分享报告保存当前结果页的结构化分析快照，用于复现视频信息、统计图表和 AI 分析结果。本站不会将原始弹幕文件或上传的字幕原文作为长期报告数据保存。",
+            },
+            {
+                "question": "为什么分享报告链接可能会失效？",
+                "answer": "报告链接有保留期限，目前按站点配置保留约 30 天，过期后会从公开报告目录移入归档。用于长期传播时，建议同时保留对应的标准结果页链接，例如 /result?bvid=BV号。",
+            },
+        ],
+    },
+]
 
 
 def _video_cover_proxy_url(bvid: str) -> str:
@@ -248,6 +344,17 @@ def _start_analysis_job(
     return job
 
 
+def _download_url(filename: str) -> str:
+    safe_name = default_store.safe_download_path(filename)
+    if "/" not in safe_name:
+        suffix = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else ""
+        if suffix == "csv":
+            safe_name = f"CSV/{safe_name}"
+        elif suffix == "txt":
+            safe_name = f"TXT/{safe_name}"
+    return f"/downloads/{quote(safe_name, safe='/')}"
+
+
 def _prepare_content_analysis_bundle(
     bvid: str,
     analysis_id: str | None,
@@ -409,6 +516,94 @@ def result_page():
     )
 
 
+@app.route("/faq", strict_slashes=False)
+def faq_page():
+    return _render_frontend(
+        "index.html",
+        is_result_page=False,
+        is_faq_page=True,
+        initial_bvid="",
+        initial_report_id="",
+    )
+
+
+@app.route("/plugin/")
+def plugin_page_trailing_slash():
+    return Response("", status=301, headers={"Location": f"{SITE_BASE_URL}/plugin"})
+
+
+@app.route("/plugin")
+def plugin_page():
+    return _render_frontend(
+        "index.html",
+        is_result_page=False,
+        is_plugin_page=True,
+        initial_bvid="",
+        initial_report_id="",
+    )
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    content = "\n".join(
+        [
+            "User-agent: *",
+            "Allow: /",
+            "Disallow: /logs",
+            "Disallow: /api/",
+            "Disallow: /download",
+            "Disallow: /downloads/",
+            "Disallow: /upload_subtitle",
+            "Disallow: /analyze_content",
+            "Disallow: /deep_analysis",
+            "Disallow: /subtitles/",
+            "",
+            f"Sitemap: {SITE_BASE_URL}/sitemap.xml",
+            "",
+        ]
+    )
+    return Response(content, content_type="text/plain; charset=utf-8")
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    url_blocks = []
+    for page in SITEMAP_PAGES:
+        loc = escape(f"{SITE_BASE_URL}{page['path']}", quote=True)
+        url_blocks.append(
+            "\n".join(
+                [
+                    "  <url>",
+                    f"    <loc>{loc}</loc>",
+                    f"    <lastmod>{page['lastmod']}</lastmod>",
+                    f"    <changefreq>{page['changefreq']}</changefreq>",
+                    f"    <priority>{page['priority']}</priority>",
+                    "  </url>",
+                ]
+            )
+        )
+    content = "\n".join(
+        [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+            *url_blocks,
+            "</urlset>",
+            "",
+        ]
+    )
+    return Response(content, content_type="application/xml; charset=utf-8")
+
+
+@app.route(f"/{INDEXNOW_KEY}.txt")
+def indexnow_key_file():
+    return Response(f"{INDEXNOW_KEY}\n", content_type="text/plain; charset=utf-8")
+
+
+@app.route("/sogousiteverification.txt")
+def sogou_site_verification():
+    return Response(f"{SOGOU_SITE_VERIFICATION}\n", content_type="text/plain; charset=utf-8")
+
+
 @app.route("/api/v2/video-cover/<bvid>.jpg")
 def video_cover(bvid):
     bvid = extract_bvid(bvid or "")
@@ -448,6 +643,8 @@ def _render_frontend(
     template_name: str,
     *,
     is_result_page: bool,
+    is_faq_page: bool = False,
+    is_plugin_page: bool = False,
     initial_bvid: str,
     initial_report_id: str,
 ):
@@ -463,15 +660,31 @@ def _render_frontend(
                 report_video_info = {**report_video_info, **fresh_video_info}
         except Exception as exc:
             app.logger.info("initial video cover lookup failed for %s: %s", render_initial_bvid, exc)
-    seo_context = _build_seo_context(is_result_page, render_initial_bvid, initial_report_id, report_preview)
+    seo_context = _build_seo_context(
+        is_result_page,
+        is_faq_page,
+        is_plugin_page,
+        render_initial_bvid,
+        initial_report_id,
+        report_preview,
+    )
     response = app.make_response(render_template(
         template_name,
         client_csrf_token=csrf_token,
         analysis_config=get_analysis_config(),
         report_config=default_report_store.public_config(),
+        faq_items=FAQ_CONTENT,
+        plugin_info={
+            "version": PLUGIN_VERSION,
+            "github_url": PLUGIN_GITHUB_URL,
+            "download_url": f"{SITE_BASE_URL}{PLUGIN_DOWNLOAD_PATH}",
+            "download_filename": PLUGIN_DOWNLOAD_FILENAME,
+        },
         report_preview=report_preview,
         report_video_info=report_video_info,
         is_result_page=is_result_page,
+        is_faq_page=is_faq_page,
+        is_plugin_page=is_plugin_page,
         initial_bvid=render_initial_bvid,
         initial_report_id=initial_report_id,
         seo=seo_context,
@@ -498,18 +711,22 @@ def _load_report_preview(is_result_page: bool, initial_report_id: str) -> dict |
 
 def _build_seo_context(
     is_result_page: bool,
+    is_faq_page: bool,
+    is_plugin_page: bool,
     initial_bvid: str,
     initial_report_id: str,
     report_preview: dict | None = None,
 ) -> dict:
-    home_title = "B站弹幕下载、解析与AI分析工具｜小刘BOT danmuku"
+    home_title = "B站弹幕查询、解析、下载与AI分析工具｜小刘BOT danmuku"
     home_description = "输入 BV 号或 Bilibili 视频链接，查询视频信息，下载弹幕 CSV/TXT，并查看词云、时间分布和 AI 弹幕分析。"
+    home_keywords = "B站弹幕查询,Bilibili弹幕解析,B站弹幕下载,弹幕分析,BV号弹幕查询,B站视频弹幕导出,弹幕词云,AI弹幕分析,免费弹幕查询,免费弹幕下载,免费B站弹幕查询,免费B站弹幕下载,免费Bilibili弹幕查询,免费Bilibili弹幕下载"
     home_url = f"{SITE_BASE_URL}/"
     default_share_image_url = f"{SITE_BASE_URL}/static/og-default.jpg"
     share_image_url = default_share_image_url
     context = {
         "title": home_title,
         "description": home_description,
+        "keywords": home_keywords,
         "canonical_url": home_url,
         "og_url": home_url,
         "image_url": share_image_url,
@@ -526,6 +743,93 @@ def _build_seo_context(
             "description": "B站弹幕查询、解析、下载和 AI 分析工具，支持 BV 号与 Bilibili 视频链接。",
         },
     }
+    if is_plugin_page:
+        plugin_url = f"{SITE_BASE_URL}/plugin"
+        plugin_title = "bilibili轻量字幕助手｜B站字幕下载Chrome插件｜小刘BOT danmuku"
+        plugin_description = "bilibili轻量字幕助手是一款适用于 Chrome 和 Chromium 浏览器的 B站字幕下载插件，可在视频页查看、搜索、复制和下载字幕，并将字幕导入本站进行 AI 内容分析。"
+        plugin_keywords = "哔哩哔哩字幕插件,B站字幕下载,Bilibili字幕下载,B站字幕插件,Chrome字幕插件,Chrome扩展,浏览器插件,字幕助手,免费B站字幕下载,AI弹幕分析,小刘BOT danmuku"
+        context.update(
+            {
+                "title": plugin_title,
+                "description": plugin_description,
+                "keywords": plugin_keywords,
+                "canonical_url": plugin_url,
+                "og_url": plugin_url,
+                "image_url": default_share_image_url,
+                "robots": "index,follow",
+                "structured_data": {
+                    "@context": "https://schema.org",
+                    "@type": "SoftwareApplication",
+                    "name": "bilibili轻量字幕助手",
+                    "url": plugin_url,
+                    "downloadUrl": f"{SITE_BASE_URL}{PLUGIN_DOWNLOAD_PATH}",
+                    "softwareVersion": PLUGIN_VERSION,
+                    "applicationCategory": "BrowserApplication",
+                    "operatingSystem": "Chrome, Chromium",
+                    "browserRequirements": "Chrome 或 Chromium 内核浏览器",
+                    "description": plugin_description,
+                    "isAccessibleForFree": True,
+                    "inLanguage": "zh-CN",
+                    "sameAs": PLUGIN_GITHUB_URL,
+                    "offers": {
+                        "@type": "Offer",
+                        "price": "0",
+                        "priceCurrency": "CNY",
+                        "availability": "https://schema.org/InStock",
+                    },
+                    "publisher": {
+                        "@type": "Organization",
+                        "name": "小刘BOT danmuku",
+                        "url": SITE_BASE_URL,
+                    },
+                    "isPartOf": {
+                        "@type": "WebApplication",
+                        "name": "小刘BOT danmuku",
+                        "url": SITE_BASE_URL,
+                    },
+                },
+            }
+        )
+        return context
+
+    if is_faq_page:
+        faq_url = f"{SITE_BASE_URL}/faq"
+        faq_title = "常见问题 FAQ｜免费B站弹幕查询、下载与AI分析｜小刘BOT danmuku"
+        faq_description = "小刘BOT danmuku 常见问题，了解 B站弹幕查询、Bilibili 弹幕下载、CSV/TXT 格式、弹幕词云、AI 弹幕分析、自主配置 API 和分享报告。"
+        faq_keywords = "B站弹幕FAQ,Bilibili弹幕下载问题,B站弹幕查询教程,AI弹幕分析FAQ,弹幕词云,CSV弹幕下载,TXT弹幕下载,小刘BOT danmuku,免费弹幕查询,免费弹幕下载,免费B站弹幕查询,免费B站弹幕下载,免费Bilibili弹幕查询,免费Bilibili弹幕下载"
+        questions = [
+            {
+                "@type": "Question",
+                "name": item["question"],
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": item["answer"],
+                },
+            }
+            for group in FAQ_CONTENT
+            for item in group["items"]
+        ]
+        context.update(
+            {
+                "title": faq_title,
+                "description": faq_description,
+                "keywords": faq_keywords,
+                "canonical_url": faq_url,
+                "og_url": faq_url,
+                "image_url": default_share_image_url,
+                "robots": "index,follow",
+                "structured_data": {
+                    "@context": "https://schema.org",
+                    "@type": "FAQPage",
+                    "name": "小刘BOT danmuku 常见问题",
+                    "url": faq_url,
+                    "description": faq_description,
+                    "mainEntity": questions,
+                },
+            }
+        )
+        return context
+
     if not is_result_page:
         return context
 
@@ -564,14 +868,17 @@ def _build_seo_context(
         title_subject = f"{video_title} - {video_author}" if video_author else video_title
         title = f"{title_subject}｜{bvid}｜Bilibili弹幕解析下载｜小刘BOT danmuku"
         description = f"在线解析《{video_title}》（{bvid}）的 Bilibili 弹幕，下载 CSV/TXT，查看词云、时间分布、互动统计和 AI 弹幕分析。"
+        keywords = f"{video_title},{bvid},{home_keywords}"
         canonical_url = f"{SITE_BASE_URL}/result?bvid={bvid}"
     elif bvid:
         title = f"{bvid}｜Bilibili弹幕解析下载｜小刘BOT danmuku"
         description = f"在线解析 {bvid} 的 Bilibili 弹幕，下载 CSV/TXT，查看词云、时间分布、互动统计和 AI 弹幕分析。"
+        keywords = f"{bvid},{home_keywords}"
         canonical_url = f"{SITE_BASE_URL}/result?bvid={bvid}"
     else:
         title = "Bilibili弹幕解析结果｜小刘BOT danmuku"
         description = home_description
+        keywords = home_keywords
         canonical_url = f"{SITE_BASE_URL}/result"
 
     page_data = {
@@ -607,6 +914,7 @@ def _build_seo_context(
         {
             "title": title,
             "description": description,
+            "keywords": keywords,
             "canonical_url": canonical_url,
             "og_url": canonical_url,
             "image_url": share_image_url,
@@ -641,8 +949,8 @@ def download():
             "csv_filename": result["csv_filename"],
             "txt_filename": result["txt_filename"],
             "download_urls": {
-                "csv": f"/downloads/{result['csv_filename']}",
-                "txt": f"/downloads/{result['txt_filename']}",
+                "csv": _download_url(result["csv_filename"]),
+                "txt": _download_url(result["txt_filename"]),
             },
             "video_info": result["video_info"],
             "analysis": result["analysis"],
@@ -695,8 +1003,9 @@ def analyze_content_route():
 @app.route("/downloads/<path:filename>")
 def download_file(filename):
     try:
-        safe_name = default_store.safe_download_name(filename)
-        return send_from_directory(str(DOWNLOAD_DIR), safe_name, as_attachment=True)
+        path = default_store.resolve_download_path(filename)
+        safe_name = path.name
+        return send_from_directory(str(path.parent), safe_name, as_attachment=True)
     except Exception:
         return jsonify({"success": False, "message": "文件不存在"}), 404
 

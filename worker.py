@@ -21,7 +21,7 @@ from danmaku_backend.settings import STATE_DIR
 
 WORKER_LOG_FILE = os.getenv(
     "BILI_DANMAKU_WORKER_LOG_FILE",
-    str(STATE_DIR / "worker.log"),
+    "/www/wwwlogs/python/bilibili_danmaku/worker.log",
 )
 WORKER_LOCK_FILE = os.getenv(
     "BILI_DANMAKU_WORKER_LOCK_FILE",

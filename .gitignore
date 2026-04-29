@@ -22,6 +22,7 @@ start.sh
 downloads/
 reports/
 subtitles/
+var/indexnow_state.json
 *.sqlite*
 *.db
 *.db-wal

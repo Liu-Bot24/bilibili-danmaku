@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import sqlite3
@@ -17,6 +18,17 @@ if str(PROJECT_ROOT) not in sys.path:
 def assert_true(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+class UploadStub:
+    def __init__(self, filename: str, content: str | bytes):
+        self.filename = filename
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+        self.stream = io.BytesIO(content)
+
+    def read(self) -> bytes:
+        return self.stream.read()
 
 
 def prepare_env(root: Path) -> None:
@@ -37,7 +49,7 @@ def prepare_env(root: Path) -> None:
         json.dumps(
             {
                 "active_provider": "missing-provider",
-                "fallback_order": ["openai-compatible-primary"],
+                "fallback_order": ["siliconflow-deepseek-v32"],
                 "analysis": {"max_concurrent_jobs": 1},
             },
             ensure_ascii=False,
@@ -92,13 +104,70 @@ def assert_old_artifact_schema_migrates(root: Path) -> None:
         ],
     )
     assert_true(store.latest_danmaku_txt("BV1xx411c7mD", record.analysis_id) is not None, "saved TXT should be indexed")
+    assert_true(record.csv_filename.startswith("CSV/"), "CSV exports should be stored under downloads/CSV")
+    assert_true(record.txt_filename.startswith("TXT/"), "TXT exports should be stored under downloads/TXT")
+    assert_true((root / "downloads" / record.csv_filename).exists(), "CSV export should exist in CSV subdirectory")
+    assert_true((root / "downloads" / record.txt_filename).exists(), "TXT export should exist in TXT subdirectory")
+    assert_true(
+        store.resolve_download_path(Path(record.csv_filename).name).exists(),
+        "legacy flat CSV download links should resolve to CSV subdirectory",
+    )
+    assert_true(
+        store.resolve_download_path(Path(record.txt_filename).name).exists(),
+        "legacy flat TXT download links should resolve to TXT subdirectory",
+    )
 
-    orphan = root / "downloads" / "danmaku_BV1xx411c7mD_20000101_000000_orphan.txt"
-    orphan.write_text("orphan", encoding="utf-8")
+    md_subtitle = store.save_subtitle(
+        UploadStub("outline.md", "# 开场\n\n这是 Markdown 字幕"),
+        "BV1xx411c7mD",
+        record.analysis_id,
+    )
+    assert_true(md_subtitle.read_text(encoding="utf-8") == "# 开场\n\n这是 Markdown 字幕", "MD subtitle should be accepted")
+
+    srt_subtitle = store.save_subtitle(
+        UploadStub(
+            "captions.srt",
+            """1
+00:00:01,000 --> 00:00:03,000
+<i>Hello &amp; welcome</i>
+
+2
+00:00:04,000 --> 00:00:05,500
+Second line
+continues here
+""",
+        ),
+        "BV1xx411c7mD",
+        record.analysis_id,
+    )
+    cleaned_srt = srt_subtitle.read_text(encoding="utf-8")
+    assert_true("00:00:01" not in cleaned_srt and "1\n" not in cleaned_srt, "SRT timing metadata should be removed")
+    assert_true("Hello & welcome" in cleaned_srt, "SRT HTML entities should be decoded")
+    assert_true("Second line continues here" in cleaned_srt, "multi-line SRT cues should be joined")
+
+    try:
+        store.save_subtitle(UploadStub("captions.ass", "unsupported"), "BV1xx411c7mD", record.analysis_id)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("unsupported subtitle extensions should be rejected")
+
+    orphan_download = root / "downloads" / "danmaku_BV1xx411c7mD_20000101_000000_orphan.txt"
+    orphan_download.write_text("orphan", encoding="utf-8")
+    orphan_subtitle = root / "subtitles" / "subtitle_BV1xx411c7mD_20000101_000000_orphan.txt"
+    orphan_subtitle.write_text("orphan", encoding="utf-8")
+    stale_tmp = root / "downloads" / ".tmp-old"
+    stale_tmp.write_text("tmp", encoding="utf-8")
     old_time = datetime.now().timestamp() - 10_000
-    os.utime(orphan, (old_time, old_time))
+    os.utime(orphan_download, (old_time, old_time))
+    os.utime(orphan_subtitle, (old_time, old_time))
+    os.utime(stale_tmp, (old_time, old_time))
     cleanup = store.cleanup(retention_seconds=1)
-    assert_true(cleanup["deleted_files"] >= 1 and not orphan.exists(), "old orphan artifact should be cleaned")
+    assert_true(orphan_download.exists(), "downloads danmaku exports must not be auto-cleaned")
+    assert_true(
+        cleanup["deleted_files"] >= 1 and not orphan_subtitle.exists() and not stale_tmp.exists(),
+        "old internal artifacts should be cleaned",
+    )
 
 
 def assert_job_lease_rules(root: Path) -> None:
@@ -168,8 +237,8 @@ def assert_model_config_fallback() -> None:
     from config import get_model_runtime_config
 
     runtime = get_model_runtime_config()
-    assert_true(runtime["active_provider"] == "openai-compatible-primary", "invalid active provider should fall back")
-    assert_true(runtime["fallback_order"][0] == "openai-compatible-primary", "fallback order should start with valid fallback")
+    assert_true(runtime["active_provider"] == "siliconflow-deepseek-v32", "invalid active provider should fall back")
+    assert_true(runtime["fallback_order"][0] == "siliconflow-deepseek-v32", "fallback order should start with valid fallback")
 
 
 def main() -> None:
@@ -180,7 +249,7 @@ def main() -> None:
         assert_old_artifact_schema_migrates(root)
         assert_job_lease_rules(root)
         assert_web_auth_contract()
-    print("OK: backend auth, lease recovery, artifact schema migration, orphan cleanup, and model fallback verified.")
+    print("OK: backend auth, lease recovery, artifact schema migration, subtitle upload formats, orphan cleanup, and model fallback verified.")
 
 
 if __name__ == "__main__":

@@ -50,7 +50,7 @@ def get_danmaku(bvid: str) -> dict[str, Any] | tuple[None, str]:
 
     cached_record = default_store.latest_cached_danmaku_record(bvid)
     if cached_record:
-        csv_path = default_store.download_dir / str(cached_record["csv_filename"])
+        csv_path = default_store.danmaku_csv_path(str(cached_record["csv_filename"]))
         danmaku_list = _load_cached_danmaku_list(csv_path)
         return {
             "analysis_id": cached_record["analysis_id"],

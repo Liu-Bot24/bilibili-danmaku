@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ seo.title }}</title>
   <meta name="description" content="{{ seo.description }}">
+  <meta name="keywords" content="{{ seo.keywords }}">
   <meta name="robots" content="{{ seo.robots }}">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg', v='20260421c') }}">
   <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.svg', v='20260421c') }}">
@@ -567,6 +568,354 @@
           box-shadow: 0 0 0 2px rgba(255,255,255,0.92), 0 0 0 4px rgba(0, 161, 214, 0.16);
       }
 
+      .faq-page #faq {
+          scroll-margin-top: 106px;
+      }
+
+      .faq-content {
+          width: min(var(--max), calc(100% - 40px));
+          margin: 0 auto;
+          padding: 84px 0 64px;
+      }
+
+      .faq-head {
+          display: grid;
+          gap: 12px;
+          max-width: 760px;
+          margin-bottom: 34px;
+      }
+
+      .faq-head h1 {
+          font-size: 42px;
+          font-weight: 800;
+      }
+
+      .faq-head p {
+          margin: 0;
+          color: var(--muted);
+          font-size: 16px;
+          line-height: 1.75;
+      }
+
+      .faq-category-grid {
+          display: grid;
+          gap: 18px;
+      }
+
+      .faq-category {
+          display: grid;
+          grid-template-columns: minmax(140px, 0.28fr) minmax(0, 1fr);
+          gap: 22px;
+          padding: 24px 0;
+          border-top: 1px solid var(--line);
+      }
+
+      .faq-category h3 {
+          font-size: 20px;
+          font-weight: 760;
+      }
+
+      .faq-list {
+          display: grid;
+          gap: 10px;
+      }
+
+      .faq-item {
+          border: 1px solid rgba(23, 26, 31, 0.08);
+          border-radius: 18px;
+          background: rgba(255,255,255,0.64);
+          box-shadow: 0 8px 22px rgba(28, 31, 36, 0.035);
+          overflow: hidden;
+      }
+
+      .faq-item summary {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 17px 18px;
+          color: var(--ink);
+          font-size: 16px;
+          font-weight: 720;
+          cursor: pointer;
+          list-style: none;
+      }
+
+      .faq-item summary::-webkit-details-marker {
+          display: none;
+      }
+
+      .faq-item summary::after {
+          content: "+";
+          display: inline-grid;
+          width: 26px;
+          height: 26px;
+          place-items: center;
+          border-radius: 999px;
+          background: rgba(0, 161, 214, 0.10);
+          color: var(--primary);
+          font-size: 18px;
+          line-height: 1;
+          flex: 0 0 auto;
+          transition: transform 160ms ease, background 160ms ease;
+      }
+
+      .faq-item[open] summary::after {
+          transform: rotate(45deg);
+          background: rgba(0, 161, 214, 0.16);
+      }
+
+      .faq-item summary:hover {
+          color: var(--primary-hover);
+      }
+
+      .faq-answer {
+          margin: 0;
+          padding: 0 18px 18px;
+          color: #2c333d;
+          line-height: 1.78;
+      }
+
+      .plugin-page #plugin {
+          scroll-margin-top: 106px;
+      }
+
+      .plugin-content {
+          width: min(var(--max), calc(100% - 40px));
+          margin: 0 auto;
+          padding: 76px 0 60px;
+          display: grid;
+          gap: 28px;
+      }
+
+      .plugin-head {
+          display: grid;
+          gap: 12px;
+          max-width: 820px;
+      }
+
+      .plugin-kicker {
+          margin: 0;
+          color: var(--primary-hover);
+          font-size: 14px;
+          font-weight: 780;
+      }
+
+      .plugin-head h1 {
+          margin: 0;
+          font-size: 42px;
+          font-weight: 820;
+          line-height: 1.14;
+      }
+
+      .plugin-head p,
+      .plugin-section p {
+          margin: 0;
+          color: var(--muted);
+          font-size: 16px;
+          line-height: 1.78;
+      }
+
+      .plugin-head p {
+          line-height: 1.75;
+      }
+
+      .plugin-actions {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+          max-width: 860px;
+          padding-top: 18px;
+          border-top: 1px solid var(--line);
+      }
+
+      .plugin-action {
+          display: grid;
+          gap: 8px;
+          min-height: 104px;
+          padding: 17px 18px;
+          border: 1px solid rgba(23, 26, 31, 0.08);
+          border-radius: 18px;
+          background: rgba(255,255,255,0.68);
+          color: var(--ink);
+          text-decoration: none;
+          box-shadow: 0 10px 26px rgba(28, 31, 36, 0.04);
+          transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+      }
+
+      .plugin-action:hover {
+          transform: translateY(-2px);
+          border-color: rgba(0, 161, 214, 0.28);
+          box-shadow: 0 14px 34px rgba(28, 31, 36, 0.08);
+      }
+
+      .plugin-action strong {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+          font-size: 18px;
+          font-weight: 780;
+      }
+
+      .plugin-action span {
+          color: var(--muted);
+          font-size: 14px;
+          line-height: 1.6;
+      }
+
+      .plugin-action em {
+          color: var(--primary-hover);
+          font-style: normal;
+          font-size: 14px;
+          font-weight: 760;
+      }
+
+      .plugin-action--primary {
+          background: linear-gradient(135deg, rgba(0, 161, 214, 0.12), rgba(255,255,255,0.82));
+          border-color: rgba(0, 161, 214, 0.22);
+      }
+
+      .plugin-section {
+          display: grid;
+          gap: 18px;
+          padding: 28px 0 0;
+          border-top: 1px solid var(--line);
+      }
+
+      .plugin-section-head {
+          display: grid;
+          gap: 8px;
+          max-width: 820px;
+      }
+
+      .plugin-section h2 {
+          margin: 0;
+          font-size: 30px;
+          font-weight: 800;
+          line-height: 1.22;
+      }
+
+      .plugin-steps {
+          counter-reset: plugin-step;
+          display: grid;
+          gap: 0;
+          margin: 0;
+          padding: 0;
+          list-style: none;
+      }
+
+      .plugin-steps li {
+          counter-increment: plugin-step;
+          display: grid;
+          grid-template-columns: 42px minmax(0, 1fr);
+          gap: 16px;
+          padding: 16px 0;
+          border-top: 1px solid var(--soft-line);
+      }
+
+      .plugin-steps li:first-child {
+          border-top: 0;
+      }
+
+      .plugin-steps li::before {
+          content: counter(plugin-step);
+          display: inline-grid;
+          width: 34px;
+          height: 34px;
+          place-items: center;
+          border-radius: 50%;
+          background: rgba(0, 161, 214, 0.12);
+          color: var(--primary-hover);
+          font-family: "Manrope", sans-serif;
+          font-size: 15px;
+          font-weight: 800;
+      }
+
+      .plugin-step-copy {
+          display: grid;
+          gap: 5px;
+      }
+
+      .plugin-step-copy strong {
+          font-size: 17px;
+          font-weight: 760;
+      }
+
+      .plugin-step-copy span {
+          color: var(--muted);
+          line-height: 1.72;
+      }
+
+      .plugin-inline-code {
+          display: inline-flex;
+          align-items: center;
+          padding: 2px 8px;
+          border-radius: 999px;
+          background: rgba(23, 26, 31, 0.06);
+          color: #28313d;
+          font-family: "Manrope", "Noto Sans SC", sans-serif;
+          font-size: 0.94em;
+          font-weight: 700;
+      }
+
+      .plugin-shot-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 18px;
+      }
+
+      .plugin-shot {
+          margin: 0;
+      }
+
+      .plugin-shot--wide {
+          grid-column: 1 / -1;
+      }
+
+      .plugin-shot img {
+          display: block;
+          width: 100%;
+          border: 1px solid rgba(23, 26, 31, 0.08);
+          border-radius: 14px;
+          background: rgba(255,255,255,0.72);
+          box-shadow: 0 10px 22px rgba(28, 31, 36, 0.05);
+      }
+
+      .plugin-shot figcaption {
+          margin-top: 9px;
+          color: var(--muted);
+          font-size: 14px;
+          line-height: 1.58;
+      }
+
+      .plugin-step-shot {
+          margin-top: 12px;
+          max-width: 420px;
+      }
+
+      .plugin-step-shot--wide {
+          max-width: 620px;
+      }
+
+      .plugin-step-shot--narrow {
+          max-width: 360px;
+      }
+
+      .plugin-step-shot--extension-card {
+          max-width: 620px;
+      }
+
+      .plugin-step-shot img {
+          width: auto;
+          max-width: 100%;
+      }
+
+      .plugin-step-shot--extension-card img {
+          width: auto;
+          height: 217px;
+      }
+
       .loading {
           color: var(--muted);
           text-align: center;
@@ -829,15 +1178,24 @@
       }
 
       .info-value.description {
-          display: -webkit-box;
-          -webkit-box-orient: vertical;
-          -webkit-line-clamp: 3;
-          max-height: none;
-          overflow: hidden;
+          display: block;
+          max-height: 145px;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
           padding: 13px 14px;
           border-radius: 14px;
           background: rgba(23, 27, 33, 0.035);
           line-height: 1.7;
+      }
+
+      .info-value.description::-webkit-scrollbar {
+          width: 6px;
+      }
+
+      .info-value.description::-webkit-scrollbar-thumb {
+          border-radius: 999px;
+          background: rgba(23, 27, 33, 0.16);
       }
 
       .content-analysis-section {
@@ -853,9 +1211,14 @@
           border-bottom: 1px solid var(--line);
       }
 
+      .custom-api-control {
+          display: grid;
+          gap: 2px;
+      }
+
       .custom-api-shell {
           display: grid;
-          gap: 14px;
+          gap: 8px;
       }
 
       .custom-api-toggle {
@@ -937,6 +1300,18 @@
 
       .custom-api-toggle-status[data-status="pending"] {
           color: var(--primary);
+      }
+
+      .custom-api-collapsed-note {
+          margin: -4px 0 6px 22px;
+          color: rgba(23, 26, 31, 0.48);
+          font-size: 13px;
+          font-style: italic;
+          line-height: 1.5;
+      }
+
+      .custom-api-shell[open] + .custom-api-collapsed-note {
+          display: none;
       }
 
       .custom-api-panel {
@@ -2022,6 +2397,16 @@
               grid-template-columns: 1fr;
           }
 
+          .plugin-actions,
+          .plugin-shot-grid {
+              grid-template-columns: 1fr;
+          }
+
+          .faq-category {
+              grid-template-columns: 1fr;
+              gap: 14px;
+          }
+
           h1 {
               font-size: 42px;
           }
@@ -2059,6 +2444,8 @@
       @media (max-width: 640px) {
           .site-nav,
           .hero-inner,
+          .faq-content,
+          .plugin-content,
           .analysis-container,
           .site-footer {
               width: min(var(--max), calc(100% - 28px));
@@ -2076,6 +2463,59 @@
               margin-left: auto;
               font-size: 13px;
               justify-content: flex-end;
+          }
+
+          .faq-content,
+          .plugin-content {
+              padding: 46px 0 44px;
+          }
+
+          .faq-head,
+          .plugin-head {
+              margin-bottom: 24px;
+          }
+
+          .faq-head h1,
+          .plugin-head h1 {
+              font-size: 31px;
+          }
+
+          .plugin-actions {
+              gap: 12px;
+          }
+
+          .plugin-action {
+              min-height: 0;
+              padding: 18px;
+              border-radius: 18px;
+          }
+
+          .plugin-section {
+              gap: 18px;
+              padding-top: 24px;
+          }
+
+          .plugin-section h2 {
+              font-size: 25px;
+          }
+
+          .plugin-steps li {
+              grid-template-columns: 34px minmax(0, 1fr);
+              gap: 12px;
+          }
+
+          .plugin-steps li::before {
+              width: 30px;
+              height: 30px;
+          }
+
+          .faq-item summary {
+              align-items: flex-start;
+              padding: 15px 16px;
+          }
+
+          .faq-answer {
+              padding: 0 16px 16px;
           }
 
           .analysis-tabs {
@@ -2221,8 +2661,8 @@
   </style>
 </head>
 
-<body class="{{ 'result-page' if is_result_page else 'home-page' }}">
-  <a class="skip-link" href="#tool">跳到弹幕查询工具</a>
+<body class="{{ 'faq-page' if is_faq_page else ('plugin-page' if is_plugin_page else ('result-page' if is_result_page else 'home-page')) }}">
+  <a class="skip-link" href="{{ '#faq' if is_faq_page else ('#plugin' if is_plugin_page else '#tool') }}">{{ '跳到常见问题' if is_faq_page else ('跳到插件下载' if is_plugin_page else '跳到弹幕查询工具') }}</a>
   <header class="site-header">
       <nav class="site-nav" aria-label="站点导航">
           <a class="brand-mark" href="https://blog.liu-qi.cn/">
@@ -2230,13 +2670,127 @@
               <span class="brand-copy"><strong>小刘BOT</strong></span>
           </a>
           <div class="nav-links">
-              <a href="{{ (url_for('index') ~ '#tool') if is_result_page else '#tool' }}">开始</a>
+              <a href="{{ (url_for('index') ~ '#tool') if (is_result_page or is_faq_page or is_plugin_page) else '#tool' }}">开始</a>
+              <a href="{{ url_for('plugin_page') }}">插件</a>
+              <a href="{{ url_for('faq_page') }}">FAQ</a>
               <a href="https://blog.liu-qi.cn/">博客</a>
           </div>
       </nav>
   </header>
 
   <main>
+      {% if is_faq_page %}
+      <section class="faq-content" aria-labelledby="faqListTitle">
+          <div class="faq-head" id="faq">
+              <h1 id="faqListTitle">常见问题</h1>
+              <p>关于 B站弹幕查询、下载、统计图表、AI 分析和分享报告的使用说明。</p>
+          </div>
+
+          <div class="faq-category-grid">
+              {% for group in faq_items %}
+              <section class="faq-category" aria-labelledby="faqCategory{{ loop.index }}">
+                  <h3 id="faqCategory{{ loop.index }}">{{ group["category"] }}</h3>
+                  <div class="faq-list">
+                      {% for item in group["items"] %}
+                      <details class="faq-item" open>
+                          <summary>{{ item["question"] }}</summary>
+                          <p class="faq-answer">{{ item["answer"] }}</p>
+                      </details>
+                      {% endfor %}
+                  </div>
+              </section>
+              {% endfor %}
+          </div>
+      </section>
+      {% elif is_plugin_page %}
+      <section class="plugin-content" id="plugin" aria-labelledby="pluginTitle">
+          <div class="plugin-head">
+              <h1 id="pluginTitle">bilibili轻量字幕助手</h1>
+              <p>适用于 Chrome 和 Chromium 内核浏览器，可辅助获取用于本站「字幕深度分析」功能的视频字幕。<br>也可独立使用，在 B 站视频页查看、搜索、复制和下载可用字幕，并支持双击字幕跳转到对应播放时间。</p>
+          </div>
+
+          <div class="plugin-actions" aria-label="插件下载与项目地址">
+              <a class="plugin-action" href="{{ plugin_info.github_url }}" target="_blank" rel="noopener noreferrer">
+                  <strong>GitHub 仓库 <em>打开</em></strong>
+                  <span>查看源码、README 和本地安装说明。</span>
+              </a>
+              <a class="plugin-action plugin-action--primary" href="{{ plugin_info.download_url }}" download="{{ plugin_info.download_filename }}">
+                  <strong>下载插件包 <em>v{{ plugin_info.version }}</em></strong>
+                  <span>下载后解压，在 Chrome 扩展程序页面加载解压后的文件夹。</span>
+              </a>
+          </div>
+
+          <section class="plugin-section" aria-labelledby="pluginInstallTitle">
+              <div class="plugin-section-head">
+                  <h2 id="pluginInstallTitle">安装教程</h2>
+              </div>
+              <ol class="plugin-steps">
+                  <li>
+                      <span class="plugin-step-copy">
+                          <strong>下载并解压插件包</strong>
+                          <span>点击上方“下载插件包”，把压缩包解压到一个固定目录，后续不要随意移动这个目录。</span>
+                      </span>
+                  </li>
+                  <li>
+                      <span class="plugin-step-copy">
+                          <strong>打开扩展程序页面</strong>
+                          <span>在地址栏输入 <span class="plugin-inline-code">chrome://extensions</span>，进入扩展程序页面。</span>
+                      </span>
+                  </li>
+                  <li>
+                      <span class="plugin-step-copy">
+                          <strong>加载未打包的扩展程序</strong>
+                          <span>打开开发者模式，点击“加载未打包的扩展程序”，选择刚才解压出来、包含 <span class="plugin-inline-code">manifest.json</span> 的文件夹。</span>
+                          <figure class="plugin-shot plugin-step-shot plugin-step-shot--narrow">
+                              <img src="{{ url_for('static', filename='plugin/chrome-load-unpacked.jpeg', v='20260429b') }}" alt="Chrome 扩展程序页面中的加载未打包的扩展程序按钮">
+                          </figure>
+                      </span>
+                  </li>
+                  <li>
+                      <span class="plugin-step-copy">
+                          <strong>确认加载成功</strong>
+                          <span>加载成功后，扩展程序列表中会出现哔哩哔哩轻量字幕助手。</span>
+                          <figure class="plugin-shot plugin-step-shot plugin-step-shot--extension-card">
+                              <img src="{{ url_for('static', filename='plugin/chrome-extension-card.jpeg', v='20260429b') }}" alt="哔哩哔哩轻量字幕助手已加载到 Chrome 扩展程序列表">
+                          </figure>
+                      </span>
+                  </li>
+              </ol>
+          </section>
+
+          <section class="plugin-section" aria-labelledby="pluginUsageTitle">
+              <div class="plugin-section-head">
+                  <h2 id="pluginUsageTitle">使用教程</h2>
+              </div>
+              <ol class="plugin-steps">
+                  <li>
+                      <span class="plugin-step-copy">
+                          <strong>在视频页查看字幕</strong>
+                          <span>打开任意 B 站视频页，等待页面加载完成后，在右侧弹幕区域查看字幕列表。</span>
+                      </span>
+                  </li>
+                  <li>
+                      <span class="plugin-step-copy">
+                          <strong>下载字幕并跳转到网站</strong>
+                          <span>点击“下载 TXT”保存字幕文件，再点击“AI分析”将自动打开本站字幕深度分析页面。</span>
+                          <figure class="plugin-shot plugin-step-shot plugin-step-shot--narrow">
+                              <img src="{{ url_for('static', filename='plugin/plugin-panel-bilibili.jpeg', v='20260429b') }}" alt="B 站视频页中的字幕助手面板">
+                          </figure>
+                      </span>
+                  </li>
+                  <li>
+                      <span class="plugin-step-copy">
+                          <strong>上传字幕并开始深度分析</strong>
+                          <span>向下滑动到字幕深度分析卡片，点击“上传字幕文件”，选择刚才下载的 TXT 字幕文件，然后点击“开始深度分析”。</span>
+                          <figure class="plugin-shot plugin-step-shot plugin-step-shot--wide">
+                              <img src="{{ url_for('static', filename='plugin/ai-upload-deep-analysis.jpeg', v='20260429b') }}" alt="AI 弹幕分析页面中的字幕深度分析上传入口">
+                          </figure>
+                      </span>
+                  </li>
+              </ol>
+          </section>
+      </section>
+      {% else %}
       <section class="hero" id="tool">
           <div class="hero-inner">
               <div class="hero-copy">
@@ -2378,15 +2932,16 @@
               <section class="content-analysis-section" aria-labelledby="aiAnalysisTitle">
                   <div class="analysis-section-head">
                       <h2 class="section-title" id="aiAnalysisTitle">AI 弹幕分析</h2>
-                      <details class="custom-api-shell" id="customApiDetails">
-                          <summary class="custom-api-toggle" id="customApiToggle">
-                              <span class="custom-api-toggle-main">
-                                  <span class="custom-api-toggle-icon" aria-hidden="true">▸</span>
-                                  <span>自主配置大模型 API</span>
-                              </span>
-                              <span class="custom-api-toggle-status" id="customApiCollapsedStatus">未配置</span>
-                          </summary>
-                          <div class="custom-api-panel" id="customApiPanel">
+                      <div class="custom-api-control">
+                          <details class="custom-api-shell" id="customApiDetails">
+                              <summary class="custom-api-toggle" id="customApiToggle">
+                                  <span class="custom-api-toggle-main">
+                                      <span class="custom-api-toggle-icon" aria-hidden="true">▸</span>
+                                      <span>自主配置大模型 API</span>
+                                  </span>
+                                  <span class="custom-api-toggle-status" id="customApiCollapsedStatus">未配置</span>
+                              </summary>
+                              <div class="custom-api-panel" id="customApiPanel">
                               <div class="custom-api-panel-grid">
                                   <section class="custom-api-block" aria-labelledby="customApiModelTitle">
                                       <div class="custom-api-block-head">
@@ -2484,8 +3039,10 @@
                                   <button type="button" class="compact-button" id="customApiSaveBtn">保存</button>
                                   <button type="button" class="secondary-button compact-button" id="customApiClearBtn">清空</button>
                               </div>
-                          </div>
-                      </details>
+                              </div>
+                          </details>
+                          <p class="custom-api-collapsed-note">通过本地浏览器调用 / 不进入服务器队列 / 自定义上下文长度和采样模式</p>
+                      </div>
                       <div class="analysis-tabs" role="tablist" aria-label="AI弹幕分析方式">
                           <button type="button" class="analysis-tab is-active" id="analysisTabContent" data-analysis-tab="content" role="tab" aria-selected="true" aria-controls="analysisPanelContent">弹幕内容分析</button>
                           <button type="button" class="analysis-tab" id="analysisTabDeep" data-analysis-tab="deep" role="tab" aria-selected="false" aria-controls="analysisPanelDeep">字幕深度分析</button>
@@ -2538,6 +3095,7 @@
               </section>
           </div>
       </div>
+      {% endif %}
       {% endif %}
 
   </main>
@@ -2698,20 +3256,22 @@
        }
 
        const bvidInput = document.getElementById('bvid');
-       bvidInput.addEventListener('keypress', function(e) {
-           if (e.key === 'Enter') {
-               downloadDanmaku();
-           }
-       });
+       if (bvidInput) {
+           bvidInput.addEventListener('keypress', function(e) {
+               if (e.key === 'Enter') {
+                   downloadDanmaku();
+               }
+           });
 
-       if (IS_RESULT_PAGE) {
-           if (INITIAL_BVID.trim()) {
-               bvidInput.value = INITIAL_BVID.trim();
-           }
-           if (INITIAL_REPORT_ID.trim()) {
-               setTimeout(() => loadSavedReport(INITIAL_REPORT_ID.trim()), 80);
-           } else if (INITIAL_BVID.trim()) {
-               setTimeout(downloadDanmaku, 80);
+           if (IS_RESULT_PAGE) {
+               if (INITIAL_BVID.trim()) {
+                   bvidInput.value = INITIAL_BVID.trim();
+               }
+               if (INITIAL_REPORT_ID.trim()) {
+                   setTimeout(() => loadSavedReport(INITIAL_REPORT_ID.trim()), 80);
+               } else if (INITIAL_BVID.trim()) {
+                   setTimeout(downloadDanmaku, 80);
+               }
            }
        }
    });
@@ -3408,8 +3968,8 @@
    function renderLiveDownloadResult(data) {
        const result = document.getElementById('result');
        const analysisContainer = document.getElementById('analysisContainer');
-       const csvHref = `/downloads/${encodeURIComponent(data.csv_filename)}`;
-       const txtHref = `/downloads/${encodeURIComponent(data.txt_filename)}`;
+       const csvHref = data.download_urls?.csv || `/downloads/${encodeURIComponent(data.csv_filename)}`;
+       const txtHref = data.download_urls?.txt || `/downloads/${encodeURIComponent(data.txt_filename)}`;
        const friendlyMessage = String(data.message || '').replace('成功下载', '成功获取');
        result.className = 'result success';
        result.style.display = 'block';
@@ -3420,10 +3980,11 @@
                <a href="${txtHref}" class="download-action-button download-action-button--secondary">下载 TXT</a>
            </div>
        `;
-       analysisContainer.style.display = 'block';
-       analysisContainer.setAttribute('aria-busy', 'false');
-       renderResultSnapshot(buildResultSnapshotFromDownload(data), { bvid: currentBvid });
-   }
+	       analysisContainer.style.display = 'block';
+	       analysisContainer.setAttribute('aria-busy', 'false');
+	       renderResultSnapshot(buildResultSnapshotFromDownload(data), { bvid: currentBvid });
+	       setActiveAnalysisTab(getPreferredAnalysisTab());
+	   }
 
    function renderSavedReportBanner(report) {
        const result = document.getElementById('result');
@@ -3455,10 +4016,12 @@
            renderDeepAnalysisCard(deepCard, { analysis: currentDeepAnalysis });
        }
 
-       if (currentContentAnalysis) {
-           setActiveAnalysisTab('content');
-       } else if (currentDeepAnalysis) {
-           setActiveAnalysisTab('deep');
+	       if (getRequestedAnalysisTab()) {
+	           setActiveAnalysisTab(getRequestedAnalysisTab());
+	       } else if (currentContentAnalysis) {
+	           setActiveAnalysisTab('content');
+	       } else if (currentDeepAnalysis) {
+	           setActiveAnalysisTab('deep');
        } else {
            setActiveAnalysisTab('content');
        }
@@ -3585,8 +4148,21 @@
 		           });
 		       });
 
-		       setActiveAnalysisTab('content');
+		       setActiveAnalysisTab(getPreferredAnalysisTab());
 		   }
+
+           function getRequestedAnalysisTab() {
+               try {
+                   const value = new URL(window.location.href).searchParams.get('analysis');
+                   return value === 'deep' ? 'deep' : value === 'content' ? 'content' : '';
+               } catch (error) {
+                   return '';
+               }
+           }
+
+           function getPreferredAnalysisTab(fallback = 'content') {
+               return getRequestedAnalysisTab() || fallback;
+           }
 
 		   function setActiveAnalysisTab(tabName) {
 		       document.querySelectorAll('.analysis-tab').forEach(tab => {

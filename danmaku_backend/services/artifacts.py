@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import html
 import json
 import os
 import re
@@ -27,6 +28,12 @@ from danmaku_backend.settings import (
 
 ANALYSIS_ID_RE = r"^[0-9a-f]{32}$"
 DANMAKU_CACHE_WINDOW_SECONDS = 3 * 60 * 60
+CSV_DOWNLOAD_SUBDIR = "CSV"
+TXT_DOWNLOAD_SUBDIR = "TXT"
+SUPPORTED_SUBTITLE_EXTENSIONS = {".txt", ".md", ".srt"}
+SRT_TIMESTAMP_RE = re.compile(
+    r"^\s*\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}\s*-->\s*\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}"
+)
 
 
 @dataclass(frozen=True)
@@ -47,6 +54,8 @@ class ArtifactStore:
         db_path: Path = STATE_DB_PATH,
     ):
         self.download_dir = Path(download_dir)
+        self.csv_dir = self.download_dir / CSV_DOWNLOAD_SUBDIR
+        self.txt_dir = self.download_dir / TXT_DOWNLOAD_SUBDIR
         self.subtitle_dir = Path(subtitle_dir)
         self.db_path = Path(db_path)
         self.index_dir = self.download_dir.parent / ".artifact-index"
@@ -55,9 +64,13 @@ class ArtifactStore:
 
     def ensure(self) -> None:
         self.download_dir.mkdir(parents=True, exist_ok=True)
+        self.csv_dir.mkdir(parents=True, exist_ok=True)
+        self.txt_dir.mkdir(parents=True, exist_ok=True)
         self.subtitle_dir.mkdir(parents=True, exist_ok=True)
         self.index_dir.mkdir(parents=True, exist_ok=True)
         os.chmod(self.download_dir, 0o755)
+        os.chmod(self.csv_dir, 0o755)
+        os.chmod(self.txt_dir, 0o755)
         os.chmod(self.subtitle_dir, 0o755)
         os.chmod(self.index_dir, 0o755)
         ensure_state_db(self.db_path)
@@ -79,12 +92,12 @@ class ArtifactStore:
         safe_bvid = secure_filename(self._validate_bvid(bvid))
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         stem = f"danmaku_{safe_bvid}_{timestamp}_{uuid.uuid4().hex[:8]}"
-        csv_path = self.download_dir / f"{stem}.csv"
-        txt_path = self.download_dir / f"{stem}.txt"
+        csv_path = self.csv_dir / f"{stem}.csv"
+        txt_path = self.txt_dir / f"{stem}.txt"
         suffix = 1
         while csv_path.exists() or txt_path.exists():
-            csv_path = self.download_dir / f"{stem}_{suffix}.csv"
-            txt_path = self.download_dir / f"{stem}_{suffix}.txt"
+            csv_path = self.csv_dir / f"{stem}_{suffix}.csv"
+            txt_path = self.txt_dir / f"{stem}_{suffix}.txt"
             suffix += 1
         return csv_path, txt_path
 
@@ -94,8 +107,8 @@ class ArtifactStore:
         csv_path, txt_path = self._available_pair(bvid)
         analysis_id = uuid.uuid4().hex
 
-        csv_tmp = self._temp_path(self.download_dir)
-        txt_tmp = self._temp_path(self.download_dir)
+        csv_tmp = self._temp_path(self.csv_dir)
+        txt_tmp = self._temp_path(self.txt_dir)
         with csv_tmp.open("w", encoding="utf-8-sig", newline="") as file:
             writer = csv.writer(file)
             writer.writerow(["弹幕内容", "出现时间(秒)", "发送时间", "类型", "字体大小", "颜色", "发送者ID"])
@@ -125,8 +138,8 @@ class ArtifactStore:
         record = DanmakuExport(
             analysis_id=analysis_id,
             bvid=bvid,
-            csv_filename=csv_path.name,
-            txt_filename=txt_path.name,
+            csv_filename=self._download_relative_name(csv_path),
+            txt_filename=self._download_relative_name(txt_path),
             count=len(danmaku_list),
             created_at=datetime.now().astimezone().isoformat(timespec="seconds"),
         )
@@ -159,8 +172,8 @@ class ArtifactStore:
             txt_name = record.get("txt_filename")
             if not csv_name or not txt_name:
                 continue
-            csv_path = self.download_dir / str(csv_name)
-            txt_path = self.download_dir / str(txt_name)
+            csv_path = self.danmaku_csv_path(str(csv_name))
+            txt_path = self.danmaku_txt_path(str(txt_name))
             if csv_path.exists() and txt_path.exists():
                 return record
         return None
@@ -172,13 +185,13 @@ class ArtifactStore:
         if analysis_id:
             record = self.get_record(analysis_id)
             if record and record.get("bvid") == safe_bvid:
-                path = self.download_dir / str(record.get("txt_filename", ""))
+                path = self.danmaku_txt_path(str(record.get("txt_filename", "")))
                 return path if path.exists() else None
             return None
 
         record = self.latest_record_for_bvid(safe_bvid)
         if record:
-            path = self.download_dir / str(record.get("txt_filename", ""))
+            path = self.danmaku_txt_path(str(record.get("txt_filename", "")))
             if path.exists():
                 return path
 
@@ -208,8 +221,9 @@ class ArtifactStore:
         safe_bvid = secure_filename(self._validate_bvid(bvid))
         analysis_id = self._validate_analysis_id(analysis_id)
         original_name = self._normalize_original_filename(file.filename or "")
-        if not original_name.lower().endswith(".txt"):
-            raise ValueError("only txt subtitles are supported")
+        subtitle_extension = Path(original_name).suffix.lower()
+        if subtitle_extension not in SUPPORTED_SUBTITLE_EXTENSIONS:
+            raise ValueError("仅支持 TXT、MD、SRT 字幕文件")
         if analysis_id:
             record = self.get_record(analysis_id)
             if not record or record.get("bvid") != safe_bvid:
@@ -218,10 +232,13 @@ class ArtifactStore:
             raise ValueError("analysis_id is required")
 
         content = file.read()
+        if isinstance(content, str):
+            content = content.encode("utf-8")
         try:
             file.stream.seek(0)
         except Exception:
             pass
+        content = self._normalize_subtitle_content(content, subtitle_extension)
 
         matched_record = self._find_matching_subtitle_record(safe_bvid, content)
         if matched_record and matched_record.get("subtitle_filename"):
@@ -272,6 +289,47 @@ class ArtifactStore:
         if not safe_name or safe_name != filename:
             raise ValueError("invalid filename")
         return safe_name
+
+    def safe_download_path(self, filename: str) -> str:
+        raw_name = str(filename or "").replace("\\", "/").strip("/")
+        parts = raw_name.split("/") if raw_name else []
+        if len(parts) == 1:
+            return self.safe_download_name(parts[0])
+        if len(parts) == 2 and parts[0] in {CSV_DOWNLOAD_SUBDIR, TXT_DOWNLOAD_SUBDIR}:
+            safe_name = self.safe_download_name(parts[1])
+            suffix = Path(safe_name).suffix.lower()
+            if parts[0] == CSV_DOWNLOAD_SUBDIR and suffix != ".csv":
+                raise ValueError("invalid filename")
+            if parts[0] == TXT_DOWNLOAD_SUBDIR and suffix != ".txt":
+                raise ValueError("invalid filename")
+            return f"{parts[0]}/{safe_name}"
+        raise ValueError("invalid filename")
+
+    def resolve_download_path(self, filename: str) -> Path:
+        safe_path = self.safe_download_path(filename)
+        candidates = [self.download_dir / safe_path]
+        if "/" not in safe_path:
+            subdir = self._download_subdir_for_name(safe_path)
+            if subdir:
+                candidates.append(self.download_dir / subdir / safe_path)
+        for path in candidates:
+            if path.is_file():
+                return path
+        raise FileNotFoundError("download not found")
+
+    def danmaku_csv_path(self, filename: str) -> Path:
+        safe_path = self.safe_download_path(filename)
+        suffix = Path(safe_path).suffix.lower()
+        if suffix != ".csv":
+            raise ValueError("invalid csv filename")
+        return self._preferred_download_path(safe_path)
+
+    def danmaku_txt_path(self, filename: str) -> Path:
+        safe_path = self.safe_download_path(filename)
+        suffix = Path(safe_path).suffix.lower()
+        if suffix != ".txt":
+            raise ValueError("invalid txt filename")
+        return self._preferred_download_path(safe_path)
 
     def get_record(self, analysis_id: str) -> dict[str, Any] | None:
         analysis_id = self._validate_analysis_id(analysis_id)
@@ -339,8 +397,6 @@ class ArtifactStore:
             deleted_records += 1
             delete_ids.append(str(record["analysis_id"]))
             for key, folder in (
-                ("csv_filename", self.download_dir),
-                ("txt_filename", self.download_dir),
                 ("subtitle_filename", self.subtitle_dir),
             ):
                 name = record.get(key)
@@ -364,6 +420,28 @@ class ArtifactStore:
         fd, name = tempfile.mkstemp(prefix=".tmp-", dir=str(directory))
         os.close(fd)
         return Path(name)
+
+    def _download_relative_name(self, path: Path) -> str:
+        return path.relative_to(self.download_dir).as_posix()
+
+    @staticmethod
+    def _download_subdir_for_name(filename: str) -> str | None:
+        suffix = Path(filename).suffix.lower()
+        if suffix == ".csv":
+            return CSV_DOWNLOAD_SUBDIR
+        if suffix == ".txt":
+            return TXT_DOWNLOAD_SUBDIR
+        return None
+
+    def _preferred_download_path(self, safe_path: str) -> Path:
+        if "/" in safe_path:
+            return self.download_dir / safe_path
+        subdir = self._download_subdir_for_name(safe_path)
+        if subdir:
+            subdir_path = self.download_dir / subdir / safe_path
+            if subdir_path.exists() or not (self.download_dir / safe_path).exists():
+                return subdir_path
+        return self.download_dir / safe_path
 
     def _merge_record(self, analysis_id: str, updates: dict[str, Any]) -> None:
         record = self.get_record(analysis_id)
@@ -405,8 +483,6 @@ class ArtifactStore:
         referenced: set[Path] = set()
         for record in records.values():
             for key, folder in (
-                ("csv_filename", self.download_dir),
-                ("txt_filename", self.download_dir),
                 ("subtitle_filename", self.subtitle_dir),
             ):
                 name = record.get(key)
@@ -418,11 +494,12 @@ class ArtifactStore:
                     continue
 
         deleted = 0
+        # Keep user-visible danmaku exports in DOWNLOAD_DIR for manual lookup/download.
         patterns = (
-            (self.download_dir, "danmaku_*.csv"),
-            (self.download_dir, "danmaku_*.txt"),
             (self.subtitle_dir, "subtitle_*.txt"),
             (self.download_dir, ".tmp-*"),
+            (self.csv_dir, ".tmp-*"),
+            (self.txt_dir, ".tmp-*"),
             (self.subtitle_dir, ".tmp-*"),
         )
         for folder, pattern in patterns:
@@ -449,8 +526,8 @@ class ArtifactStore:
         created_at = str(record.get("created_at") or datetime.now().astimezone().isoformat(timespec="seconds"))
         updated_at = str(record.get("updated_at") or created_at)
         count = int(record.get("count") or 0)
-        csv_filename = self._normalize_filename(record.get("csv_filename"))
-        txt_filename = self._normalize_filename(record.get("txt_filename"))
+        csv_filename = self._normalize_download_filename(record.get("csv_filename"), ".csv")
+        txt_filename = self._normalize_download_filename(record.get("txt_filename"), ".txt")
         subtitle_filename = self._normalize_filename(record.get("subtitle_filename"))
         subtitle_original_filename = self._normalize_original_filename(
             record.get("subtitle_original_filename")
@@ -562,6 +639,14 @@ class ArtifactStore:
             raise ValueError("invalid filename")
         return name
 
+    def _normalize_download_filename(self, value: Any, expected_suffix: str) -> str | None:
+        if value in (None, ""):
+            return None
+        name = self.safe_download_path(str(value))
+        if Path(name).suffix.lower() != expected_suffix:
+            raise ValueError("invalid filename")
+        return name
+
     @staticmethod
     def _normalize_original_filename(value: Any) -> str | None:
         if value in (None, ""):
@@ -570,6 +655,64 @@ class ArtifactStore:
         if not name or name in {".", ".."} or "\x00" in name:
             raise ValueError("invalid filename")
         return name
+
+    @staticmethod
+    def _decode_subtitle_bytes(content: bytes) -> str:
+        try:
+            return content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return content.decode("utf-8", errors="replace").lstrip("\ufeff")
+
+    @classmethod
+    def _normalize_subtitle_content(cls, content: bytes, extension: str) -> bytes:
+        if extension == ".srt":
+            return cls._clean_srt_content(content).encode("utf-8")
+        return content
+
+    @classmethod
+    def _clean_srt_content(cls, content: bytes) -> str:
+        text = cls._decode_subtitle_bytes(content)
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        blocks = re.split(r"\n{2,}", text)
+        cues: list[str] = []
+
+        for block in blocks:
+            lines = [line.strip() for line in block.split("\n") if line.strip()]
+            if not lines:
+                continue
+
+            timestamp_index = next((index for index, line in enumerate(lines) if SRT_TIMESTAMP_RE.match(line)), -1)
+            if timestamp_index >= 0:
+                payload_lines = lines[timestamp_index + 1 :]
+            else:
+                payload_lines = [
+                    line
+                    for line in lines
+                    if not line.isdigit() and "-->" not in line
+                ]
+
+            cleaned_lines = [cls._clean_srt_text_line(line) for line in payload_lines]
+            cleaned_lines = [line for line in cleaned_lines if line]
+            if cleaned_lines:
+                cues.append(" ".join(cleaned_lines))
+
+        if cues:
+            return "\n".join(cues).strip() + "\n"
+
+        fallback_lines = [
+            cls._clean_srt_text_line(line)
+            for line in text.split("\n")
+            if line.strip() and not line.strip().isdigit() and "-->" not in line
+        ]
+        fallback_lines = [line for line in fallback_lines if line]
+        return "\n".join(fallback_lines).strip() + ("\n" if fallback_lines else "")
+
+    @staticmethod
+    def _clean_srt_text_line(line: str) -> str:
+        line = re.sub(r"<[^>]+>", "", line)
+        line = re.sub(r"\{\\.*?\}", "", line)
+        line = html.unescape(line)
+        return re.sub(r"\s+", " ", line).strip()
 
     def _find_matching_subtitle_record(self, bvid: str, content: bytes) -> dict[str, Any] | None:
         target_digest = hashlib.md5(content).hexdigest()
