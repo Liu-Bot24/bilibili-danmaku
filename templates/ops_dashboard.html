@@ -619,6 +619,7 @@
       <div class="range-controls">
         <div class="rangebar" role="group" aria-label="快速筛选">
           <button type="button" data-days="1">今日</button>
+          <button type="button" data-range="yesterday">昨日</button>
           <button type="button" data-days="7">7天</button>
           <button type="button" data-days="30" class="active">30天</button>
           <button type="button" data-days="90">90天</button>
@@ -1281,6 +1282,9 @@
     }
 
     function currentSelection() {
+      if (state.mode === 'yesterday') {
+        return { preset: 'yesterday' };
+      }
       if (state.mode === 'custom') {
         return { startDate: state.startDate, endDate: state.endDate };
       }
@@ -1289,7 +1293,9 @@
 
     function updateRangeControls() {
       $$('.rangebar button').forEach((button) => {
-        const active = state.mode === 'days' && Number(button.dataset.days) === Number(state.days);
+        const active = button.dataset.range === 'yesterday'
+          ? state.mode === 'yesterday'
+          : state.mode === 'days' && Number(button.dataset.days) === Number(state.days);
         button.classList.toggle('active', active);
       });
     }
@@ -1335,7 +1341,16 @@
         selection = { days: selection };
       }
       const params = new URLSearchParams();
-      if (selection.startDate || selection.endDate) {
+      if (selection.preset === 'yesterday') {
+        const yesterday = localDate(-1);
+        state.mode = 'yesterday';
+        state.startDate = yesterday;
+        state.endDate = yesterday;
+        params.set('start', yesterday);
+        params.set('end', yesterday);
+        $('#startDate').value = yesterday;
+        $('#endDate').value = yesterday;
+      } else if (selection.startDate || selection.endDate) {
         state.mode = 'custom';
         state.startDate = selection.startDate || $('#startDate').value || localDate(-29);
         state.endDate = selection.endDate || $('#endDate').value || localDate(0);
@@ -1417,7 +1432,13 @@
     }
 
     $$('.rangebar button').forEach((button) => {
-      button.addEventListener('click', () => loadDashboard(Number(button.dataset.days)));
+      button.addEventListener('click', () => {
+        if (button.dataset.range === 'yesterday') {
+          loadDashboard({ preset: 'yesterday' });
+          return;
+        }
+        loadDashboard(Number(button.dataset.days));
+      });
     });
     $$('.segmented button[data-behavior-mode]').forEach((button) => {
       button.addEventListener('click', () => {
