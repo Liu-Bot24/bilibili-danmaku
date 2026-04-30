@@ -389,11 +389,6 @@
       color: var(--red);
     }
 
-    .dashboard-grid {
-      grid-template-columns: 1.6fr 1fr;
-      align-items: stretch;
-    }
-
     .two-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -589,34 +584,6 @@
       width: 180px;
     }
 
-    .comparison {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
-      padding: 14px;
-    }
-
-    .comparison-item {
-      padding: 10px;
-      border: 1px solid var(--line-soft);
-      border-radius: 8px;
-      background: #fbfcfd;
-    }
-
-    .comparison-item strong {
-      display: block;
-      font-size: 18px;
-      line-height: 1.2;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .comparison-item span {
-      display: block;
-      margin-top: 4px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
     .empty {
       padding: 18px;
       color: var(--muted);
@@ -647,7 +614,6 @@
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
 
-      .dashboard-grid,
       .two-grid,
       .three-grid,
       .bot-chart-grid {
@@ -696,10 +662,6 @@
       .section-head {
         align-items: flex-start;
         flex-direction: column;
-      }
-
-      .comparison {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .chart {
@@ -760,7 +722,7 @@
         <div class="error-box" id="errorBox"></div>
       </section>
 
-      <section class="section grid dashboard-grid">
+      <section class="section">
         <div class="panel">
           <div class="panel-head">
             <div>
@@ -769,15 +731,6 @@
             </div>
           </div>
           <div id="trafficChart" class="chart"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-head">
-            <div>
-              <h3>周期对比</h3>
-              <span>当前周期对比上一周期</span>
-            </div>
-          </div>
-          <div class="comparison" id="periodCompare"></div>
         </div>
       </section>
 
@@ -1107,38 +1060,6 @@
               <div class="kpi-value">${formatNumber(item.current)}</div>
             </div>
             <div class="delta ${deltaClass(item)}">${deltaText(item)}</div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    function renderPeriodCompare(data) {
-      const compare = data.kpis.period_compare || {};
-      const fields = [
-        ['pv', 'PV'],
-        ['uv', 'UV去重'],
-        ['daily_uv_sum', '日UV'],
-        ['artifact_success', '解析'],
-        ['button_clicks', '点击'],
-        ['builtin_ai_calls', '内置AI接口'],
-        ['custom_ai_calls', '自主模型'],
-        ['analysis_jobs', '任务记录'],
-        ['reports', '报告'],
-        ['bot_hits', 'Bot']
-      ];
-      const rows = fields
-        .map(([key, label]) => ({ key, label, item: compare[key] || null }))
-        .filter((row) => row.item && row.item.has_previous !== false);
-      if (!rows.length) {
-        $('#periodCompare').innerHTML = '<div class="empty">上一等长周期暂无数据</div>';
-        return;
-      }
-      $('#periodCompare').innerHTML = rows.map(({ label, item }) => {
-        const sign = Number(item.diff || 0) > 0 ? '+' : '';
-        return `
-          <div class="comparison-item">
-            <strong>${formatNumber(item.current)}</strong>
-            <span>${escapeHtml(label)} ${sign}${item.pct || 0}%</span>
           </div>
         `;
       }).join('');
@@ -1492,7 +1413,6 @@
     function render(data) {
       renderMeta(data);
       renderKpis(data);
-      renderPeriodCompare(data);
       renderTrafficChart(data);
       renderBehaviorPanel(data);
       renderAiAnalysisChart(data);
@@ -1646,7 +1566,6 @@
           <div class="delta">等待当前筛选结果</div>
         </div>
       `).join('');
-      $('#periodCompare').innerHTML = '<div class="empty">正在读取当前筛选范围...</div>';
       [
         ['#behaviorTable', 4],
         ['#pageTable', 4],
