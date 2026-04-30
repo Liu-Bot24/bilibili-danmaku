@@ -403,7 +403,13 @@
     }
 
     .browser-source-grid {
-      align-items: start;
+      align-items: stretch;
+    }
+
+    .browser-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
 
     .panel-head {
@@ -472,7 +478,8 @@
     }
 
     .browser-chart {
-      height: 300px;
+      flex: 1 1 auto;
+      height: auto;
       min-height: 300px;
     }
 
@@ -831,7 +838,7 @@
       </section>
 
       <section class="section grid two-grid browser-source-grid">
-        <div class="panel">
+        <div class="panel browser-panel">
           <div class="panel-head">
             <div>
               <h3>浏览器分布</h3>
@@ -1025,6 +1032,14 @@
       }
       state.charts[id].hideLoading();
       state.charts[id].setOption(option, true);
+    }
+
+    function resizeChartsSoon() {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          Object.values(state.charts).forEach((instance) => instance && instance.resize && instance.resize());
+        });
+      });
     }
 
     function formatNumber(value) {
@@ -1485,6 +1500,7 @@
       renderUaChart(data);
       renderBotChart(data);
       renderTables(data);
+      resizeChartsSoon();
     }
 
     function currentSelection() {
@@ -1761,7 +1777,9 @@
       state.abortController = controller;
       setDashboardLoading(request);
       try {
-        const response = await fetch(`/api/v2/ops-dashboard?${request.key}`, { cache: 'no-store', signal: controller.signal });
+        const fetchParams = new URLSearchParams(request.key);
+        if (options.force) fetchParams.set('refresh', '1');
+        const response = await fetch(`/api/v2/ops-dashboard?${fetchParams.toString()}`, { cache: 'no-store', signal: controller.signal });
         const payload = await response.json();
         if (requestId !== state.requestSeq || request.key !== state.activeRequestKey) {
           return;

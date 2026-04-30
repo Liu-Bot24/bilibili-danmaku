@@ -419,6 +419,7 @@ def build_ops_dashboard(
     start_date: str | None = None,
     end_date: str | None = None,
     exclude_ips: str | list[str] | None = None,
+    force_refresh: bool = False,
 ) -> dict[str, Any]:
     date_keys = _date_keys_for_range(start_date, end_date, days)
     days = len(date_keys)
@@ -428,15 +429,16 @@ def build_ops_dashboard(
     filter_key = ",".join(sorted(excluded_ip_hashes)) or "none"
     cache_key = f"{OPS_DASHBOARD_CACHE_SCHEMA}:{date_keys[0]}:{date_keys[-1]}:exclude:{filter_key}"
     now = time.time()
-    with _dashboard_cache_lock:
-        cached = _dashboard_cache.get(cache_key)
-        if cached and now - cached[0] < ANALYTICS_CACHE_SECONDS:
-            return cached[1]
-    disk_cached = _read_dashboard_disk_cache(cache_key, now)
-    if disk_cached:
+    if not force_refresh:
         with _dashboard_cache_lock:
-            _dashboard_cache[cache_key] = (now, disk_cached)
-        return disk_cached
+            cached = _dashboard_cache.get(cache_key)
+            if cached and now - cached[0] < ANALYTICS_CACHE_SECONDS:
+                return cached[1]
+        disk_cached = _read_dashboard_disk_cache(cache_key, now)
+        if disk_cached:
+            with _dashboard_cache_lock:
+                _dashboard_cache[cache_key] = (now, disk_cached)
+            return disk_cached
 
     current_metrics = _dashboard_metrics_for_dates(date_keys, excluded_ips, excluded_ip_hashes)
     previous_metrics = _dashboard_metrics_for_dates(previous_date_keys, excluded_ips, excluded_ip_hashes)
