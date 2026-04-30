@@ -132,7 +132,7 @@ BOT_SOURCE_RULES = (
 )
 INTERNAL_HOSTS = {"danmu.liu-qi.cn", "dm.liu-qi.cn"}
 ANALYTICS_CACHE_SECONDS = 900
-OPS_DASHBOARD_CACHE_SCHEMA = "ops-v12-clear-ai-bvid-labels"
+OPS_DASHBOARD_CACHE_SCHEMA = "ops-v13-bvid-scenarios"
 VIDEO_META_FETCH_LIMIT = 6
 MAX_ACCESS_LOG_BYTES = 80 * 1024 * 1024
 OPS_VIDEO_META_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_video_meta.json")
@@ -309,6 +309,7 @@ REGION_LABELS = {
 
 PAGE_CATEGORIES = {"page_home", "page_result", "page_faq", "page_plugin"}
 DOWNLOAD_CATEGORIES = {"download_csv", "download_txt", "download_file", "plugin_download"}
+URL_VISIBLE_BVID_CATEGORIES = PAGE_CATEGORIES | DOWNLOAD_CATEGORIES
 API_CATEGORIES = {
     "download_generate",
     "subtitle_upload",
@@ -810,7 +811,7 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
                         top_referrers[referer_domain] += 1
                         referrer_visitors[referer_domain].add(visitor_key)
                         referrer_visitors_daily[date_key][referer_domain].add(visitor_key)
-                if row["bvid"]:
+                if row["bvid"] and category in URL_VISIBLE_BVID_CATEGORIES and status < 500:
                     top_bvids[row["bvid"]] += 1
 
     for key, unique_ips in visitors.items():
@@ -1329,30 +1330,31 @@ def _feature_trends(date_keys: list[str], feature_daily: dict[str, Counter[str]]
 
 
 def _top_bvids(
-    request_counts: Counter[str],
+    url_visible_counts: Counter[str],
     artifact_counts: Counter[str],
     report_counts: Counter[str],
     video_meta: dict[str, dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for name in set(request_counts) | set(artifact_counts) | set(report_counts):
-        requests = int(request_counts.get(name, 0))
+    for name in set(url_visible_counts) | set(artifact_counts) | set(report_counts):
+        link_visits = int(url_visible_counts.get(name, 0))
         parses = int(artifact_counts.get(name, 0))
         reports = int(report_counts.get(name, 0))
         rows.append(
             {
                 "name": name,
-                "value": requests + parses + reports,
-                "requests": requests,
+                "value": parses,
+                "link_visits": link_visits,
+                "requests": link_visits,
                 "parses": parses,
                 "reports": reports,
             }
         )
     rows.sort(
         key=lambda item: (
-            -int(item.get("value") or 0),
             -int(item.get("parses") or 0),
             -int(item.get("reports") or 0),
+            -int(item.get("link_visits") or 0),
             str(item.get("name") or ""),
         )
     )
