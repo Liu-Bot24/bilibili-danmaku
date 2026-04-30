@@ -788,7 +788,7 @@
           <div class="panel-head">
             <div>
               <h3>热门 BV</h3>
-              <span id="bvidScopeText">综合次数 = 访问请求 + 解析成功 + 分享报告，未加权</span>
+              <span id="bvidScopeText">综合次数 = 访问请求 + 解析成功 + 分享报告，未加权；解析成功记录不覆盖早期历史</span>
             </div>
             <div class="panel-tools">
               <div class="segmented" role="group" aria-label="BV 榜单">
@@ -1191,11 +1191,25 @@
 
     function renderBvidPanel(data) {
       const isAi = state.bvidMode === 'ai';
-      $('#bvidScopeText').textContent = isAi ? '有 AI 分析任务记录的 BV' : '综合次数 = 访问请求 + 解析成功 + 分享报告，未加权';
+      $('#bvidScopeText').textContent = bvidScopeText(data, isAi);
       $$('.segmented button[data-bvid-mode]').forEach((button) => {
         button.classList.toggle('active', button.dataset.bvidMode === state.bvidMode);
       });
       renderBvidTable(isAi ? (data.ai_bvids || []) : (data.top_bvids || []), isAi);
+    }
+
+    function bvidScopeText(data, isAi) {
+      const coverage = ((data.meta || {}).coverage || {});
+      if (isAi) {
+        const jobStart = dateOnly(coverage.job_start);
+        return jobStart ? `有 AI 分析任务记录的 BV；AI任务自 ${jobStart} 起记录` : '有 AI 分析任务记录的 BV';
+      }
+      const parts = ['综合次数 = 访问请求 + 解析成功 + 分享报告，未加权'];
+      const artifactStart = dateOnly(coverage.artifact_start);
+      const reportStart = dateOnly(coverage.report_start);
+      if (artifactStart) parts.push(`解析成功自 ${artifactStart} 起记录`);
+      if (reportStart) parts.push(`分享报告自 ${reportStart} 起记录`);
+      return parts.join('；');
     }
 
     function renderBvidTable(rows, isAi = false) {
@@ -1634,6 +1648,11 @@
     function formatDateTime(value) {
       if (!value) return '';
       return String(value).replace('T', ' ').slice(0, 19);
+    }
+
+    function dateOnly(value) {
+      if (!value) return '';
+      return String(value).slice(0, 10);
     }
 
     function middleEllipsis(value, maxLength) {

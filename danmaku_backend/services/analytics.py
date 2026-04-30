@@ -132,7 +132,7 @@ BOT_SOURCE_RULES = (
 )
 INTERNAL_HOSTS = {"danmu.liu-qi.cn", "dm.liu-qi.cn"}
 ANALYTICS_CACHE_SECONDS = 900
-OPS_DASHBOARD_CACHE_SCHEMA = "ops-v10-bvid-breakdown"
+OPS_DASHBOARD_CACHE_SCHEMA = "ops-v11-source-coverage"
 VIDEO_META_FETCH_LIMIT = 6
 MAX_ACCESS_LOG_BYTES = 80 * 1024 * 1024
 OPS_VIDEO_META_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_video_meta.json")
@@ -474,6 +474,16 @@ def build_ops_dashboard(
                 "reports JSON",
             ],
             "access_log": _file_freshness(ACCESS_LOG_FILE),
+            "coverage": {
+                "artifact_start": artifacts["summary"].get("first_record_at"),
+                "artifact_end": artifacts["summary"].get("last_record_at"),
+                "analytics_event_start": events["coverage"].get("first_date"),
+                "analytics_event_end": events["coverage"].get("last_date"),
+                "job_start": jobs["summary"].get("first_created_at"),
+                "job_end": jobs["summary"].get("last_created_at"),
+                "report_start": reports["summary"].get("first_report_at"),
+                "report_end": reports["summary"].get("last_report_at"),
+            },
             "admin_filter": {
                 "enabled": bool(excluded_ips),
                 "ips": sorted(excluded_ips),
@@ -483,6 +493,7 @@ def build_ops_dashboard(
                 "Bot流量单列统计，不计入PV、UV、地区与用户归因。",
                 "可按管理员 IP 过滤访问日志、按钮埋点以及可关联的解析/任务/报告数据。",
                 "地区来源基于聚合网段做近似归类，不返回完整原始 IP。",
+                "解析成功、AI任务和点击埋点按记录表上线时间覆盖，早于起点的周期不是完整历史。",
                 "按钮点击从前端埋点上线后开始累计。",
             ],
         },
@@ -863,6 +874,13 @@ def _analytics_event_metrics(date_keys: list[str], excluded_ip_hashes: set[str] 
     event_count = 0
     excluded_analysis_ids: set[str] = set()
     with connect_state_db(STATE_DB_PATH) as conn:
+        coverage = conn.execute(
+            """
+            SELECT MIN(date) AS first_date, MAX(date) AS last_date
+            FROM analytics_events
+            WHERE is_bot = 0
+            """
+        ).fetchone()
         rows = conn.execute(
             """
             SELECT date, category, status, duration_ms, ip_hash, analysis_id
@@ -926,6 +944,10 @@ def _analytics_event_metrics(date_keys: list[str], excluded_ip_hashes: set[str] 
             "p95_ms": _percentile(durations, 95),
             "by_category": by_category,
         },
+        "coverage": {
+            "first_date": coverage["first_date"] if coverage else None,
+            "last_date": coverage["last_date"] if coverage else None,
+        },
         "excluded_analysis_ids": excluded_analysis_ids,
     }
 
@@ -947,6 +969,11 @@ def _artifact_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | No
             FROM artifact_records
             """
         ).fetchall()
+    record_times = [
+        str(row["created_at"] or "")
+        for row in rows
+        if str(row["analysis_id"] or "") not in excluded_analysis_ids and str(row["created_at"] or "")
+    ]
     for row in rows:
         if str(row["analysis_id"] or "") in excluded_analysis_ids:
             continue
@@ -977,6 +1004,8 @@ def _artifact_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | No
             "unique_bvids": len(top_bvids),
             "total_danmaku_lines": total_danmaku,
             "subtitle_records": subtitle_records,
+            "first_record_at": min(record_times) if record_times else None,
+            "last_record_at": max(record_times) if record_times else None,
         },
     }
 
@@ -1014,6 +1043,12 @@ def _job_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | None = 
         events_by_job[str(event["job_id"])].append(
             {"type": str(event["type"] or ""), "message": str(event["message"] or "")}
         )
+    job_times = [
+        str(row["created_at"] or "")
+        for row in rows
+        if str(_json_object(row["payload_json"]).get("analysis_id") or "") not in excluded_analysis_ids
+        and str(row["created_at"] or "")
+    ]
     for row in rows:
         payload = _json_object(row["payload_json"])
         if str(payload.get("analysis_id") or "") in excluded_analysis_ids:
@@ -1091,6 +1126,8 @@ def _job_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | None = 
                 "p50": _percentile(durations, 50),
                 "p95": _percentile(durations, 95),
             },
+            "first_created_at": min(job_times) if job_times else None,
+            "last_created_at": max(job_times) if job_times else None,
             "trends": [
                 {"name": name, "data": [trends[key].get(name, 0) for key in date_keys]}
                 for name in trend_names
@@ -1107,6 +1144,7 @@ def _report_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | None
     video_meta: dict[str, dict[str, str]] = {}
     active_reports = 0
     archived_reports = 0
+    report_times: list[str] = []
 
     def collect_report(report: dict[str, Any] | None, archived: bool = False) -> None:
         nonlocal active_reports, archived_reports
@@ -1114,6 +1152,9 @@ def _report_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | None
             return
         if str(report.get("analysis_id") or "") in excluded_analysis_ids:
             return
+        created_at = str(report.get("created_at") or "").strip()
+        if created_at:
+            report_times.append(created_at)
         date_key = _date_from_iso(report.get("created_at"))
         if date_key not in date_set:
             return
@@ -1152,6 +1193,8 @@ def _report_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | None
         "summary": {
             "active_reports": active_reports,
             "archived_reports": archived_reports,
+            "first_report_at": min(report_times) if report_times else None,
+            "last_report_at": max(report_times) if report_times else None,
         },
     }
 
