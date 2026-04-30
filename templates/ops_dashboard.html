@@ -284,6 +284,62 @@
       white-space: nowrap;
     }
 
+    .label-with-help {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    .help-tip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 15px;
+      height: 15px;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: #f8fafb;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1;
+      font-weight: 700;
+      cursor: help;
+      user-select: none;
+      flex: 0 0 auto;
+    }
+
+    .help-tip:hover,
+    .help-tip:focus-visible {
+      border-color: rgba(0, 152, 200, 0.5);
+      color: var(--accent);
+      outline: none;
+    }
+
+    .floating-tooltip {
+      position: fixed;
+      z-index: 100;
+      max-width: min(320px, calc(100vw - 28px));
+      padding: 8px 10px;
+      border-radius: 7px;
+      background: #172028;
+      color: #fff;
+      box-shadow: 0 10px 28px rgba(20, 23, 26, 0.18);
+      font-size: 12px;
+      line-height: 1.45;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+
+    .floating-tooltip.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
     .kpi-value {
       margin-top: 8px;
       font-size: 26px;
@@ -788,7 +844,10 @@
           <div class="panel-head">
             <div>
               <h3>热门 BV</h3>
-              <span id="bvidScopeText">按解析成功排序；解析成功代表用户提交 BV 并生成结果，链接访问只作为复访、分享、插件或直链线索</span>
+              <span class="label-with-help">
+                <span id="bvidScopeText">按解析成功排序</span>
+                <span id="bvidHelpTip" class="help-tip" tabindex="0" aria-label="热门 BV 口径说明" data-tooltip="解析排行按成功生成结果排序，链接访问和分享报告只作为辅助线索。">?</span>
+              </span>
             </div>
             <div class="panel-tools">
               <div class="segmented" role="group" aria-label="BV 榜单">
@@ -901,6 +960,31 @@
     };
     const DASHBOARD_CACHE_MS = 2 * 60 * 1000;
     const palette = ['#0098c8', '#138a5b', '#a86f16', '#6955b8', '#bd3930', '#4d6f87', '#20262c', '#7b8791'];
+    const KPI_HELP = {
+      pv: '排除明显 Bot 后的页面访问次数；同一访客多次打开或刷新会重复计入。',
+      uv: '当前筛选范围内按访客去重的 UV；30 天内同一访客只计一次，用来看真实用户规模。',
+      daily_uv_sum: '把每天的 UV 相加；同一访客跨天访问会重复计入，用来看每日活跃热度。',
+      artifact_success: '成功生成弹幕结果的次数；对应用户提交 BV 后拿到可用结果。',
+      button_clicks: '前端埋点记录到的按钮或链接点击次数；只覆盖埋点上线后的真实点击。',
+      builtin_ai_calls: '内置 AI 分析接口的调用次数，来自访问日志。一次 AI 任务可能会触发多次接口调用、重试或分段处理，所以它通常不等于 AI 任务数。',
+      custom_ai_calls: '用户使用自主模型配置发起 AI 分析接口的调用次数，来自访问日志。',
+      analysis_jobs: '后台任务表里创建的 AI 分析任务数；更接近一次完整分析流程。一个任务可能对应多次内置或自主模型接口调用。',
+      reports: '分享报告相关记录数量，用来看报告保存和传播；下方行为表会拆分保存、读取等行为。',
+      bot_hits: '被识别为搜索引擎、AI Bot 或脚本工具的访问次数；不计入普通 UV、地区和用户归因。'
+    };
+    const BVID_HELP = {
+      section: '热门 BV 默认按解析成功排序。解析成功用于判断用户真正处理了哪些视频；链接访问用于判断结果是否被复访、分享、插件跳转或直链消费；分享报告用于判断报告传播。',
+      aiSection: 'AI 分析页签按后台任务表统计和 BV 关联的 AI 分析任务；这里的次数是任务数，不是模型接口调用次数。',
+      bvid: '视频 BV 号。',
+      title: '从 B 站公开信息补全的视频标题；太长时中间省略。',
+      author: '从 B 站公开信息补全的 UP 主名称。',
+      parses: '用户在站内提交 BV 并成功生成弹幕结果的次数。用它判断视频处理需求。',
+      linkVisits: '结果页、下载页等 URL 中带 BV 的访问次数。常见于复访、分享链接、插件跳转、收藏夹或直链访问，用它判断结果消费和传播。',
+      reports: '围绕该 BV 保存或读取分享报告的次数。',
+      video: '跳转到 B 站原视频。',
+      aiAnalysis: '该 BV 关联的 AI 分析任务拆分，包括内容/深度分析以及成功/失败状态。',
+      aiCount: '该 BV 的 AI 分析任务总数，不是模型接口调用次数。'
+    };
 
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -961,23 +1045,23 @@
     function renderKpis(data) {
       const compare = data.kpis.range_compare || data.kpis.day_compare || {};
       const fields = [
-        ['pv', 'PV'],
-        ['uv', 'UV去重'],
-        ['daily_uv_sum', '日UV累计'],
-        ['artifact_success', '解析成功'],
-        ['button_clicks', '按钮点击'],
-        ['builtin_ai_calls', '内置AI接口'],
-        ['custom_ai_calls', '自主模型'],
-        ['analysis_jobs', 'AI任务记录'],
-        ['reports', '分享报告'],
-        ['bot_hits', 'Bot 流量']
+        ['pv', 'PV', KPI_HELP.pv],
+        ['uv', 'UV去重', KPI_HELP.uv],
+        ['daily_uv_sum', '日UV累计', KPI_HELP.daily_uv_sum],
+        ['artifact_success', '解析成功', KPI_HELP.artifact_success],
+        ['button_clicks', '按钮点击', KPI_HELP.button_clicks],
+        ['builtin_ai_calls', '内置AI接口', KPI_HELP.builtin_ai_calls],
+        ['custom_ai_calls', '自主模型', KPI_HELP.custom_ai_calls],
+        ['analysis_jobs', 'AI任务记录', KPI_HELP.analysis_jobs],
+        ['reports', '分享报告', KPI_HELP.reports],
+        ['bot_hits', 'Bot 流量', KPI_HELP.bot_hits]
       ];
-      $('#kpiGrid').innerHTML = fields.map(([key, label]) => {
+      $('#kpiGrid').innerHTML = fields.map(([key, label, help]) => {
         const item = compare[key] || { current: 0, diff: 0, pct: 0 };
         return `
           <div class="panel kpi">
             <div>
-              <div class="kpi-label">${label}</div>
+              <div class="kpi-label">${labelWithHelp(label, help)}</div>
               <div class="kpi-value">${formatNumber(item.current)}</div>
             </div>
             <div class="delta ${deltaClass(item)}">${deltaText(item)}</div>
@@ -989,30 +1073,30 @@
     function renderPeriodCompare(data) {
       const compare = data.kpis.period_compare || {};
       const fields = [
-        ['pv', 'PV'],
-        ['uv', 'UV去重'],
-        ['daily_uv_sum', '日UV'],
-        ['artifact_success', '解析'],
-        ['button_clicks', '点击'],
-        ['builtin_ai_calls', '内置AI接口'],
-        ['custom_ai_calls', '自主模型'],
-        ['analysis_jobs', '任务记录'],
-        ['reports', '报告'],
-        ['bot_hits', 'Bot']
+        ['pv', 'PV', KPI_HELP.pv],
+        ['uv', 'UV去重', KPI_HELP.uv],
+        ['daily_uv_sum', '日UV', KPI_HELP.daily_uv_sum],
+        ['artifact_success', '解析', KPI_HELP.artifact_success],
+        ['button_clicks', '点击', KPI_HELP.button_clicks],
+        ['builtin_ai_calls', '内置AI接口', KPI_HELP.builtin_ai_calls],
+        ['custom_ai_calls', '自主模型', KPI_HELP.custom_ai_calls],
+        ['analysis_jobs', '任务记录', KPI_HELP.analysis_jobs],
+        ['reports', '报告', KPI_HELP.reports],
+        ['bot_hits', 'Bot', KPI_HELP.bot_hits]
       ];
       const rows = fields
-        .map(([key, label]) => ({ key, label, item: compare[key] || null }))
+        .map(([key, label, help]) => ({ key, label, help, item: compare[key] || null }))
         .filter((row) => row.item && row.item.has_previous !== false);
       if (!rows.length) {
         $('#periodCompare').innerHTML = '<div class="empty">上一等长周期暂无数据</div>';
         return;
       }
-      $('#periodCompare').innerHTML = rows.map(({ label, item }) => {
+      $('#periodCompare').innerHTML = rows.map(({ label, help, item }) => {
         const sign = Number(item.diff || 0) > 0 ? '+' : '';
         return `
           <div class="comparison-item">
             <strong>${formatNumber(item.current)}</strong>
-            <span>${label} ${sign}${item.pct || 0}%</span>
+            <span>${labelWithHelp(label, help)} ${sign}${item.pct || 0}%</span>
           </div>
         `;
       }).join('');
@@ -1191,37 +1275,36 @@
 
     function renderBvidPanel(data) {
       const isAi = state.bvidMode === 'ai';
-      $('#bvidScopeText').textContent = bvidScopeText(data, isAi);
+      $('#bvidScopeText').textContent = isAi ? '按 AI 任务记录统计' : '按解析成功排序';
+      setHelpTip($('#bvidHelpTip'), bvidHelpText(data, isAi));
       $$('.segmented button[data-bvid-mode]').forEach((button) => {
         button.classList.toggle('active', button.dataset.bvidMode === state.bvidMode);
       });
       renderBvidTable(isAi ? (data.ai_bvids || []) : (data.top_bvids || []), isAi);
     }
 
-    function bvidScopeText(data, isAi) {
+    function bvidHelpText(data, isAi) {
       const coverage = ((data.meta || {}).coverage || {});
       if (isAi) {
         const jobStart = dateOnly(coverage.job_start);
-        return jobStart ? `有 AI 分析任务记录的 BV；AI任务记录自 ${jobStart} 起记录` : '有 AI 分析任务记录的 BV';
+        const parts = [BVID_HELP.aiSection];
+        if (jobStart) parts.push(`AI任务记录自 ${jobStart} 起记录。`);
+        return parts.join('');
       }
-      const parts = [
-        '按解析成功排序',
-        '解析成功代表用户在站内提交 BV 并成功生成结果，用来看真实处理需求',
-        '链接访问只统计结果页/下载页等 URL 里露出 BV 的访问，用来看复访、分享、插件或直链线索'
-      ];
+      const parts = [BVID_HELP.section];
       const artifactStart = dateOnly(coverage.artifact_start);
       const reportStart = dateOnly(coverage.report_start);
-      if (artifactStart) parts.push(`解析成功自 ${artifactStart} 起记录`);
-      if (reportStart) parts.push(`分享报告自 ${reportStart} 起记录`);
-      return parts.join('；');
+      if (artifactStart) parts.push(`解析成功自 ${artifactStart} 起记录。`);
+      if (reportStart) parts.push(`分享报告自 ${reportStart} 起记录。`);
+      return parts.join('');
     }
 
     function renderBvidTable(rows, isAi = false) {
       const target = $('#bvidTable');
       const head = $('#bvidTableHead');
       head.innerHTML = isAi
-        ? '<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th>AI分析</th><th>视频</th><th class="numeric">次数</th></tr>'
-        : '<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th class="numeric">解析成功</th><th class="numeric">链接访问</th><th class="numeric">分享报告</th><th>视频</th></tr>';
+        ? `<tr><th>${labelWithHelp('BV号', BVID_HELP.bvid)}</th><th>${labelWithHelp('视频标题', BVID_HELP.title)}</th><th>${labelWithHelp('UP主', BVID_HELP.author)}</th><th>${labelWithHelp('AI分析', BVID_HELP.aiAnalysis)}</th><th>${labelWithHelp('视频', BVID_HELP.video)}</th><th class="numeric">${labelWithHelp('次数', BVID_HELP.aiCount)}</th></tr>`
+        : `<tr><th>${labelWithHelp('BV号', BVID_HELP.bvid)}</th><th>${labelWithHelp('视频标题', BVID_HELP.title)}</th><th>${labelWithHelp('UP主', BVID_HELP.author)}</th><th class="numeric">${labelWithHelp('解析成功', BVID_HELP.parses)}</th><th class="numeric">${labelWithHelp('链接访问', BVID_HELP.linkVisits)}</th><th class="numeric">${labelWithHelp('分享报告', BVID_HELP.reports)}</th><th>${labelWithHelp('视频', BVID_HELP.video)}</th></tr>`;
       if (!rows || rows.length === 0) {
         target.innerHTML = `<tr><td colspan="${isAi ? 6 : 7}"><div class="empty">暂无 BV 数据</div></td></tr>`;
         return;
@@ -1512,6 +1595,23 @@
       });
     }
 
+    document.addEventListener('mouseover', (event) => {
+      const target = event.target.closest('.help-tip');
+      if (target) showHelpTooltip(target);
+    });
+    document.addEventListener('focusin', (event) => {
+      const target = event.target.closest('.help-tip');
+      if (target) showHelpTooltip(target);
+    });
+    document.addEventListener('mouseout', (event) => {
+      if (event.target.closest('.help-tip')) hideHelpTooltip();
+    });
+    document.addEventListener('focusout', (event) => {
+      if (event.target.closest('.help-tip')) hideHelpTooltip();
+    });
+    window.addEventListener('scroll', hideHelpTooltip, { passive: true });
+    window.addEventListener('resize', hideHelpTooltip);
+
     function responseMatchesRequest(data, request) {
       const meta = data.meta || {};
       if (request.expectedStart && meta.range_start !== request.expectedStart) return false;
@@ -1646,6 +1746,56 @@
         '"': '&quot;',
         "'": '&#39;'
       })[char]);
+    }
+
+    function helpTip(text) {
+      if (!text) return '';
+      const escaped = escapeHtml(text);
+      return `<span class="help-tip" tabindex="0" aria-label="${escaped}" data-tooltip="${escaped}">?</span>`;
+    }
+
+    function labelWithHelp(label, text) {
+      return `<span class="label-with-help"><span>${escapeHtml(label)}</span>${helpTip(text)}</span>`;
+    }
+
+    function setHelpTip(element, text) {
+      if (!element) return;
+      element.dataset.tooltip = text || '';
+      element.setAttribute('aria-label', text || '说明');
+    }
+
+    function tooltipElement() {
+      let element = document.getElementById('floatingTooltip');
+      if (!element) {
+        element = document.createElement('div');
+        element.id = 'floatingTooltip';
+        element.className = 'floating-tooltip';
+        document.body.appendChild(element);
+      }
+      return element;
+    }
+
+    function showHelpTooltip(target) {
+      const text = target && target.dataset ? target.dataset.tooltip : '';
+      if (!text) return;
+      const tooltip = tooltipElement();
+      tooltip.textContent = text;
+      tooltip.classList.add('visible');
+      const targetRect = target.getBoundingClientRect();
+      const tooltipRect = tooltip.getBoundingClientRect();
+      let left = targetRect.left + targetRect.width / 2 - tooltipRect.width / 2;
+      left = Math.max(14, Math.min(left, window.innerWidth - tooltipRect.width - 14));
+      let top = targetRect.bottom + 8;
+      if (top + tooltipRect.height > window.innerHeight - 14) {
+        top = Math.max(14, targetRect.top - tooltipRect.height - 8);
+      }
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+    }
+
+    function hideHelpTooltip() {
+      const tooltip = document.getElementById('floatingTooltip');
+      if (tooltip) tooltip.classList.remove('visible');
     }
 
     function formatDateTime(value) {
