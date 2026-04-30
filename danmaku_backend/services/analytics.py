@@ -574,7 +574,7 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
     feature_daily: dict[str, Counter[str]] = defaultdict(Counter)
     top_pages: Counter[str] = Counter()
     top_referrers: Counter[str] = Counter()
-    top_ip_segments: Counter[str] = Counter()
+    region_visitors: dict[str, set[str]] = defaultdict(set)
     top_user_agents: Counter[str] = Counter()
     top_bvids: Counter[str] = Counter()
     download_breakdown: Counter[str] = Counter()
@@ -644,12 +644,11 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
                     ai_detail_daily[date_key][detail] += 1
                 if category in PAGE_CATEGORIES and row["method"] == "GET" and status < 500:
                     day["pv"] += 1
-                    visitors[date_key].add(_ip_hash(row["ip"]))
+                    visitor_key = _ip_hash(row["ip"])
+                    visitors[date_key].add(visitor_key)
+                    region_visitors[_ip_segment(row["ip"])].add(visitor_key)
                     top_pages[label] += 1
-                if category in API_CATEGORIES and status < 500:
-                    top_ip_segments[_ip_segment(row["ip"])] += 1
                 if category in PAGE_CATEGORIES:
-                    top_ip_segments[_ip_segment(row["ip"])] += 1
                     top_user_agents[_user_agent_family(row["ua"])] += 1
                 referer_domain = _referer_domain(row["referer"])
                 if referer_domain:
@@ -664,7 +663,7 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
         "feature_daily": feature_daily,
         "top_pages": top_pages,
         "top_referrers": top_referrers,
-        "top_ip_segments": top_ip_segments,
+        "top_ip_segments": Counter({segment: len(values) for segment, values in region_visitors.items()}),
         "top_user_agents": top_user_agents,
         "top_bvids": top_bvids,
         "download_breakdown": download_breakdown,
@@ -675,7 +674,7 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
         "ai_mode_details": ai_mode_details,
         "ai_mode_daily": ai_mode_daily,
         "ai_detail_daily": ai_detail_daily,
-        "top_regions": _region_items_from_segments(top_ip_segments, 16),
+        "top_regions": _region_items_from_segment_visitors(region_visitors, 16),
         "bot_traffic": {
             "families": _counter_items(bot_families, 8),
             "summary": _counter_items(bot_sources, 12),
@@ -1617,6 +1616,55 @@ def _region_items_from_segments(segments: Counter[str], limit: int = 12) -> list
     if changed:
         _write_ip_region_cache(cache)
     return _counter_items(region_counts, limit)
+
+
+def _region_items_from_segment_visitors(
+    segment_visitors: dict[str, set[str]],
+    limit: int = 12,
+) -> list[dict[str, Any]]:
+    segment_counts = Counter({segment: len(visitors) for segment, visitors in segment_visitors.items() if visitors})
+    if not segment_counts:
+        return []
+    cache = _read_ip_region_cache()
+    top_segments = segment_counts.most_common(200)
+    missing = [
+        segment
+        for segment, _ in top_segments[:48]
+        if (
+            segment not in cache
+            or _is_placeholder_region((cache.get(segment) or {}).get("label"))
+        )
+        and _public_representative_ip(segment)
+    ][:24]
+    changed = False
+    if missing:
+        with ThreadPoolExecutor(max_workers=min(10, len(missing))) as executor:
+            futures = {executor.submit(_fetch_ip_region, _public_representative_ip(segment)): segment for segment in missing}
+            for future in as_completed(futures):
+                segment = futures[future]
+                try:
+                    label = future.result()
+                except Exception:
+                    label = ""
+                if label and not _is_placeholder_region(label):
+                    cache[segment] = {"label": label, "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
+                    changed = True
+    visitors_by_region: dict[str, set[str]] = defaultdict(set)
+    for segment, _ in top_segments:
+        label, did_fetch = _region_label_for_segment(segment, cache, False)
+        changed = changed or did_fetch
+        if not label or _is_placeholder_region(label):
+            continue
+        visitors_by_region[label].update(segment_visitors.get(segment) or set())
+    if changed:
+        _write_ip_region_cache(cache)
+    rows = [
+        {"name": label, "value": len(visitors)}
+        for label, visitors in visitors_by_region.items()
+        if visitors
+    ]
+    rows.sort(key=lambda item: item["value"], reverse=True)
+    return rows[:limit]
 
 
 def _region_label_for_segment(segment: str, cache: dict[str, dict[str, Any]], can_fetch: bool) -> tuple[str, bool]:

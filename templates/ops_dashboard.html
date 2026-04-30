@@ -731,6 +731,9 @@
             </table>
           </div>
         </div>
+      </section>
+
+      <section class="section grid two-grid">
         <div class="panel">
           <div class="panel-head">
             <div>
@@ -740,9 +743,6 @@
           </div>
           <div id="uaChart" class="chart small"></div>
         </div>
-      </section>
-
-      <section class="section grid two-grid">
         <div class="panel">
           <div class="panel-head">
             <div>
@@ -757,16 +757,19 @@
             </table>
           </div>
         </div>
+      </section>
+
+      <section class="section">
         <div class="panel">
           <div class="panel-head">
             <div>
               <h3>地区分布</h3>
-              <span>按访问 IP 归属近似归类</span>
+              <span>按真实用户页面 UV 归属近似归类</span>
             </div>
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>地区</th><th class="numeric">次数</th></tr></thead>
+              <thead><tr><th>地区</th><th class="numeric">UV</th></tr></thead>
               <tbody id="regionTable"></tbody>
             </table>
           </div>
@@ -796,7 +799,7 @@
         </div>
       </section>
 
-      <section class="section">
+      <section class="section grid two-grid">
         <div class="panel">
           <div class="panel-head">
             <div>
@@ -815,9 +818,6 @@
             </table>
           </div>
         </div>
-      </section>
-
-      <section class="section grid two-grid">
         <div class="panel">
           <div class="panel-head">
             <div>
@@ -833,6 +833,9 @@
             </table>
           </div>
         </div>
+      </section>
+
+      <section class="section">
         <div class="panel">
           <div class="panel-head">
             <div>
@@ -1213,7 +1216,7 @@
     function renderTables(data) {
       renderSimpleTable('#pageTable', data.top_pages, '页面', 'PV');
       renderSimpleTable('#referrerTable', data.top_referrers, '来源', '次数');
-      renderSimpleTable('#regionTable', data.top_regions, '地区', '次数');
+      renderSimpleTable('#regionTable', data.top_regions, '地区', 'UV');
       renderSimpleTable('#aiAnalysisTable', data.ai_analysis_breakdown || data.ai_mode_details, 'AI 分析', '调用');
       renderBvidPanel(data);
 
