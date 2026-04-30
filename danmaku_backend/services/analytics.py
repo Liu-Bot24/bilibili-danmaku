@@ -132,7 +132,7 @@ BOT_SOURCE_RULES = (
 )
 INTERNAL_HOSTS = {"danmu.liu-qi.cn", "dm.liu-qi.cn"}
 ANALYTICS_CACHE_SECONDS = 900
-OPS_DASHBOARD_CACHE_SCHEMA = "ops-v11-source-coverage"
+OPS_DASHBOARD_CACHE_SCHEMA = "ops-v12-clear-ai-bvid-labels"
 VIDEO_META_FETCH_LIMIT = 6
 MAX_ACCESS_LOG_BYTES = 80 * 1024 * 1024
 OPS_VIDEO_META_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_video_meta.json")
@@ -493,7 +493,8 @@ def build_ops_dashboard(
                 "Bot流量单列统计，不计入PV、UV、地区与用户归因。",
                 "可按管理员 IP 过滤访问日志、按钮埋点以及可关联的解析/任务/报告数据。",
                 "地区来源基于聚合网段做近似归类，不返回完整原始 IP。",
-                "解析成功、AI任务和点击埋点按记录表上线时间覆盖，早于起点的周期不是完整历史。",
+                "内置AI接口来自访问日志；AI任务记录来自任务表，两者覆盖起点和统计口径不同。",
+                "解析成功、AI任务记录和点击埋点按记录表上线时间覆盖，早于起点的周期不是完整历史。",
                 "按钮点击从前端埋点上线后开始累计。",
             ],
         },
@@ -1285,9 +1286,9 @@ def _kpis(
         ("daily_uv_sum", "日UV累计"),
         ("artifact_success", "解析成功"),
         ("button_clicks", "按钮点击"),
-        ("builtin_ai_calls", "内置AI"),
+        ("builtin_ai_calls", "内置AI接口"),
         ("custom_ai_calls", "自主模型"),
-        ("analysis_jobs", "AI任务"),
+        ("analysis_jobs", "AI任务记录"),
         ("reports", "分享报告"),
         ("bot_hits", "Bot流量"),
     ]

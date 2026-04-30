@@ -668,7 +668,7 @@
           <div class="panel-head">
             <div>
               <h3>运营趋势</h3>
-              <span>PV、日UV、解析成功、按钮点击、AI、分享与 Bot</span>
+              <span>PV、日UV、解析成功、按钮点击、AI接口、任务记录、分享与 Bot</span>
             </div>
           </div>
           <div id="trafficChart" class="chart"></div>
@@ -788,7 +788,7 @@
           <div class="panel-head">
             <div>
               <h3>热门 BV</h3>
-              <span id="bvidScopeText">综合次数 = 访问请求 + 解析成功 + 分享报告，未加权；解析成功记录不覆盖早期历史</span>
+              <span id="bvidScopeText">综合次数 = URL请求 + 解析成功 + 分享报告，未加权；URL请求只统计访问日志里 URL/查询串带 BV 的请求</span>
             </div>
             <div class="panel-tools">
               <div class="segmented" role="group" aria-label="BV 榜单">
@@ -966,9 +966,9 @@
         ['daily_uv_sum', '日UV累计'],
         ['artifact_success', '解析成功'],
         ['button_clicks', '按钮点击'],
-        ['builtin_ai_calls', '内置 AI'],
+        ['builtin_ai_calls', '内置AI接口'],
         ['custom_ai_calls', '自主模型'],
-        ['analysis_jobs', 'AI 任务'],
+        ['analysis_jobs', 'AI任务记录'],
         ['reports', '分享报告'],
         ['bot_hits', 'Bot 流量']
       ];
@@ -994,9 +994,9 @@
         ['daily_uv_sum', '日UV'],
         ['artifact_success', '解析'],
         ['button_clicks', '点击'],
-        ['builtin_ai_calls', '内置AI'],
+        ['builtin_ai_calls', '内置AI接口'],
         ['custom_ai_calls', '自主模型'],
-        ['analysis_jobs', 'AI任务'],
+        ['analysis_jobs', '任务记录'],
         ['reports', '报告'],
         ['bot_hits', 'Bot']
       ];
@@ -1025,7 +1025,7 @@
         ['日UV', 'uv'],
         ['解析成功', 'artifact_success'],
         ['按钮点击', 'button_clicks'],
-        ['内置AI', 'builtin_ai_calls'],
+        ['内置AI接口', 'builtin_ai_calls'],
         ['自主模型', 'custom_ai_calls'],
         ['分享报告', 'reports'],
         ['Bot流量', 'bot_hits']
@@ -1202,9 +1202,9 @@
       const coverage = ((data.meta || {}).coverage || {});
       if (isAi) {
         const jobStart = dateOnly(coverage.job_start);
-        return jobStart ? `有 AI 分析任务记录的 BV；AI任务自 ${jobStart} 起记录` : '有 AI 分析任务记录的 BV';
+        return jobStart ? `有 AI 分析任务记录的 BV；AI任务记录自 ${jobStart} 起记录` : '有 AI 分析任务记录的 BV';
       }
-      const parts = ['综合次数 = 访问请求 + 解析成功 + 分享报告，未加权'];
+      const parts = ['综合次数 = URL请求 + 解析成功 + 分享报告，未加权', 'URL请求只统计访问日志里 URL/查询串带 BV 的请求，不含 POST body'];
       const artifactStart = dateOnly(coverage.artifact_start);
       const reportStart = dateOnly(coverage.report_start);
       if (artifactStart) parts.push(`解析成功自 ${artifactStart} 起记录`);
@@ -1217,7 +1217,7 @@
       const head = $('#bvidTableHead');
       head.innerHTML = isAi
         ? '<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th>AI分析</th><th>视频</th><th class="numeric">次数</th></tr>'
-        : '<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th class="numeric">访问请求</th><th class="numeric">解析成功</th><th class="numeric">分享报告</th><th class="numeric">综合次数</th><th>视频</th></tr>';
+        : '<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th class="numeric">URL请求</th><th class="numeric">解析成功</th><th class="numeric">分享报告</th><th class="numeric">综合次数</th><th>视频</th></tr>';
       if (!rows || rows.length === 0) {
         target.innerHTML = `<tr><td colspan="${isAi ? 6 : 8}"><div class="empty">暂无 BV 数据</div></td></tr>`;
         return;
