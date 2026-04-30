@@ -97,6 +97,12 @@ def _record_request_analytics(response):
         record_request_event(request, response, duration_ms)
     except Exception:
         app.logger.exception("Request analytics write failed")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if request.is_secure or request.headers.get("X-Forwarded-Proto", "").lower() == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=15552000")
     return response
 
 FAQ_CONTENT = [
