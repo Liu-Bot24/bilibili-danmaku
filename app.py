@@ -14,7 +14,7 @@ from datetime import datetime
 from urllib.parse import quote, urlparse
 
 import requests
-from flask import Flask, Response, jsonify, render_template, request, send_from_directory, stream_with_context
+from flask import Flask, Response, g, jsonify, render_template, request, send_from_directory, stream_with_context
 from werkzeug.exceptions import Forbidden, HTTPException
 
 from config import get_analysis_config, get_app_access_token
@@ -23,6 +23,7 @@ from danmaku_backend.analysis.deep_analysis import DeepAnalysis
 from danmaku_backend.runtime.bootstrap import ensure_directories
 from danmaku_backend.runtime.logging_bus import set_job_event_writer
 from danmaku_backend.services.artifacts import default_store
+from danmaku_backend.services.analytics import build_ops_dashboard, record_request_event
 from danmaku_backend.services.baidu_submit import default_baidu_submitter
 from danmaku_backend.services.bilibili import BILIBILI_HEADERS, extract_bvid, get_video_info
 from danmaku_backend.services.database import connect_state_db, ensure_state_db
@@ -79,6 +80,24 @@ SITEMAP_PAGES = (
     {"path": "/faq", "lastmod": "2026-04-29", "changefreq": "monthly", "priority": "0.8"},
 )
 set_job_event_writer(default_job_store.add_event)
+
+
+@app.before_request
+def _start_request_timer():
+    g.ops_request_started_at = time.perf_counter()
+
+
+@app.after_request
+def _record_request_analytics(response):
+    started_at = getattr(g, "ops_request_started_at", None)
+    duration_ms = None
+    if started_at is not None:
+        duration_ms = (time.perf_counter() - started_at) * 1000
+    try:
+        record_request_event(request, response, duration_ms)
+    except Exception:
+        app.logger.exception("Request analytics write failed")
+    return response
 
 FAQ_CONTENT = [
     {
@@ -272,6 +291,11 @@ def _guard_read():
     if _valid_app_token() or _same_origin_request() or request.cookies.get(_CSRF_COOKIE):
         return None
     raise Forbidden()
+
+
+def _noindex_response(response):
+    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    return response
 
 
 def _resolve_bvid_and_analysis_id(data: dict) -> tuple[str | None, str | None]:
@@ -543,6 +567,19 @@ def plugin_page():
     )
 
 
+@app.route("/favicon.ico")
+def favicon_ico():
+    response = send_from_directory(app.static_folder, "favicon.svg", mimetype="image/svg+xml")
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
+
+
+@app.route("/ops", strict_slashes=False)
+def ops_dashboard_page():
+    response = app.make_response(render_template("ops_dashboard.html"))
+    return _noindex_response(response)
+
+
 @app.route("/robots.txt")
 def robots_txt():
     content = "\n".join(
@@ -550,7 +587,9 @@ def robots_txt():
             "User-agent: *",
             "Allow: /",
             "Disallow: /logs",
+            "Disallow: /ops",
             "Disallow: /api/",
+            "Disallow: /api/v2/ops-dashboard",
             "Disallow: /download",
             "Disallow: /downloads/",
             "Disallow: /upload_subtitle",
@@ -1293,6 +1332,13 @@ def run_cleanup():
             "meta": {"schema_version": "2.0"},
         }
     )
+
+
+@app.route("/api/v2/ops-dashboard")
+def ops_dashboard_data():
+    data = build_ops_dashboard(request.args.get("days", 30))
+    response = jsonify({"success": True, "data": data, "error": None, "meta": {"schema_version": "2.0"}})
+    return _noindex_response(response)
 
 
 @app.route("/health")

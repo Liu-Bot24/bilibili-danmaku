@@ -71,6 +71,30 @@ CREATE TABLE IF NOT EXISTS request_rate_limits (
 
 CREATE INDEX IF NOT EXISTS idx_request_rate_limits_key_kind_ts
     ON request_rate_limits (client_key, kind, ts);
+
+CREATE TABLE IF NOT EXISTS analytics_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    date TEXT NOT NULL,
+    method TEXT NOT NULL,
+    path TEXT NOT NULL,
+    category TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    duration_ms REAL,
+    ip_hash TEXT,
+    ip_segment TEXT,
+    user_agent_family TEXT,
+    is_bot INTEGER NOT NULL DEFAULT 0,
+    referer_domain TEXT,
+    bvid TEXT,
+    analysis_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_date_category
+    ON analytics_events (date, category);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_status_date
+    ON analytics_events (status, date);
 """
 
 

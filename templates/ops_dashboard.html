@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>运营看板｜小刘BOT danmuku</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --panel: #ffffff;
+      --panel-soft: #f1f5f7;
+      --ink: #14171a;
+      --muted: #66727d;
+      --line: #dfe6ea;
+      --line-soft: #edf1f3;
+      --accent: #0098c8;
+      --accent-soft: rgba(0, 152, 200, 0.12);
+      --green: #138a5b;
+      --red: #bd3930;
+      --amber: #a86f16;
+      --violet: #6955b8;
+      --max: 1440px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      letter-spacing: 0;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .shell {
+      min-height: 100vh;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      min-height: 64px;
+      padding: 0 28px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(246, 247, 248, 0.92);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 220px;
+    }
+
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(160deg, #007aa2, #00a1d6);
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .brand span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .rangebar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .rangebar button,
+    .refresh-button {
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--ink);
+      cursor: pointer;
+      transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+    }
+
+    .rangebar button:hover,
+    .refresh-button:hover {
+      border-color: rgba(0, 152, 200, 0.45);
+    }
+
+    .rangebar button.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .freshness {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      min-width: 260px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: right;
+    }
+
+    .content {
+      width: min(var(--max), calc(100% - 56px));
+      margin: 0 auto;
+      padding: 24px 0 42px;
+    }
+
+    .section {
+      margin-top: 22px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 12px;
+    }
+
+    .section-head h1,
+    .section-head h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+      font-weight: 760;
+    }
+
+    .section-head p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid > * {
+      min-width: 0;
+    }
+
+    .kpi-grid {
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+    }
+
+    .panel {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 1px 2px rgba(20, 23, 26, 0.03);
+    }
+
+    .kpi {
+      min-height: 116px;
+      padding: 15px 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .kpi-label {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .kpi-value {
+      margin-top: 8px;
+      font-size: 26px;
+      line-height: 1.05;
+      font-weight: 780;
+    }
+
+    .delta {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .delta.up {
+      color: var(--green);
+    }
+
+    .delta.down {
+      color: var(--red);
+    }
+
+    .dashboard-grid {
+      grid-template-columns: 1.6fr 1fr;
+      align-items: stretch;
+    }
+
+    .two-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .three-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .panel-head {
+      min-height: 56px;
+      padding: 14px 16px 8px;
+      border-bottom: 1px solid var(--line-soft);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .panel-head h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 760;
+    }
+
+    .panel-head span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .chart {
+      min-width: 0;
+      width: 100%;
+      height: 330px;
+      min-height: 330px;
+    }
+
+    .chart.small {
+      height: 260px;
+      min-height: 260px;
+    }
+
+    .table-wrap {
+      min-width: 0;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line-soft);
+      text-align: left;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      background: #fbfcfd;
+    }
+
+    td.numeric,
+    th.numeric {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border-radius: 8px;
+      background: var(--panel-soft);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .tag.good {
+      background: rgba(19, 138, 91, 0.11);
+      color: var(--green);
+    }
+
+    .tag.warn {
+      background: rgba(168, 111, 22, 0.12);
+      color: var(--amber);
+    }
+
+    .tag.bad {
+      background: rgba(189, 57, 48, 0.11);
+      color: var(--red);
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      padding: 14px;
+    }
+
+    .comparison-item {
+      padding: 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+
+    .comparison-item strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.2;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .comparison-item span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .empty {
+      padding: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .loading {
+      opacity: 0.62;
+      pointer-events: none;
+    }
+
+    .error-box {
+      display: none;
+      margin-top: 14px;
+      padding: 12px 14px;
+      border: 1px solid rgba(189, 57, 48, 0.28);
+      border-radius: 8px;
+      color: var(--red);
+      background: rgba(189, 57, 48, 0.07);
+    }
+
+    @media (max-width: 1180px) {
+      .kpi-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .dashboard-grid,
+      .two-grid,
+      .three-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .topbar {
+        position: relative;
+        min-height: auto;
+        padding: 14px 18px;
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .brand,
+      .freshness {
+        min-width: 0;
+      }
+
+      .freshness {
+        text-align: left;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .content {
+        width: min(100% - 28px, var(--max));
+        padding-top: 18px;
+      }
+
+      .kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .section-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .comparison {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .chart {
+        height: 280px;
+        min-height: 280px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand" aria-label="小刘BOT danmuku 运营看板">
+        <div class="brand-mark"></div>
+        <div>
+          <strong>小刘BOT danmuku</strong>
+          <span>运营看板</span>
+        </div>
+      </div>
+      <div class="rangebar" role="group" aria-label="数据范围">
+        <button type="button" data-days="7">7天</button>
+        <button type="button" data-days="30" class="active">30天</button>
+        <button type="button" data-days="90">90天</button>
+      </div>
+      <div class="freshness">
+        <span id="freshnessText">正在读取数据</span>
+        <button class="refresh-button" type="button" id="refreshButton">刷新</button>
+      </div>
+    </header>
+
+    <main class="content" id="dashboardRoot">
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h1>今日概览</h1>
+            <p id="scopeText">PV/UV 已排除明显爬虫；下载、API 与任务数据按服务器记录汇总。</p>
+          </div>
+        </div>
+        <div class="grid kpi-grid" id="kpiGrid"></div>
+        <div class="error-box" id="errorBox"></div>
+      </section>
+
+      <section class="section grid dashboard-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>流量与核心动作</h3>
+              <span>PV、UV、API 调用、下载、解析成功</span>
+            </div>
+          </div>
+          <div id="trafficChart" class="chart"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>周期对比</h3>
+              <span>当前周期对比上一周期</span>
+            </div>
+          </div>
+          <div class="comparison" id="periodCompare"></div>
+        </div>
+      </section>
+
+      <section class="section grid two-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>功能使用变化</h3>
+              <span>页面、解析、下载与 AI 功能</span>
+            </div>
+          </div>
+          <div id="featureChart" class="chart"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>下载结构</h3>
+              <span>CSV、TXT 与插件包</span>
+            </div>
+          </div>
+          <div id="downloadChart" class="chart"></div>
+        </div>
+      </section>
+
+      <section class="section grid two-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>AI 任务</h3>
+              <span>队列、运行、成功与失败</span>
+            </div>
+          </div>
+          <div id="jobChart" class="chart small"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>任务</th><th>状态</th><th class="numeric">数量</th></tr></thead>
+              <tbody id="jobTable"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>API 与错误</h3>
+              <span>状态码、接口调用与错误率</span>
+            </div>
+          </div>
+          <div id="statusChart" class="chart small"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>接口</th><th class="numeric">调用</th><th class="numeric">错误率</th></tr></thead>
+              <tbody id="apiTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section grid three-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>页面入口</h3>
+              <span>主要页面访问</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>页面</th><th class="numeric">PV</th></tr></thead>
+              <tbody id="pageTable"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>来源域名</h3>
+              <span>站外与直接访问</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>来源</th><th class="numeric">次数</th></tr></thead>
+              <tbody id="referrerTable"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>IP 来源</h3>
+              <span>按聚合网段展示</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>网段</th><th class="numeric">次数</th></tr></thead>
+              <tbody id="ipTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section grid two-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>热门 BV</h3>
+              <span>来自结果页、下载、报告与解析记录</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>BV号</th><th class="numeric">热度</th></tr></thead>
+              <tbody id="bvidTable"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>浏览器分布</h3>
+              <span>用户代理粗分类</span>
+            </div>
+          </div>
+          <div id="uaChart" class="chart small"></div>
+        </div>
+      </section>
+
+      <section class="section grid two-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>存储与产物</h3>
+              <span>下载文件、字幕、报告和插件包</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>对象</th><th class="numeric">数量</th><th class="numeric">体积</th><th>最新变更</th></tr></thead>
+              <tbody id="inventoryTable"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>最近应用错误</h3>
+              <span>来自 app.log 的错误级别记录</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>时间</th><th>信息</th></tr></thead>
+              <tbody id="errorTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const state = { days: 30, data: null, charts: {} };
+    const palette = ['#0098c8', '#138a5b', '#a86f16', '#6955b8', '#bd3930', '#4d6f87', '#20262c', '#7b8791'];
+
+    const $ = (selector) => document.querySelector(selector);
+    const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+
+    function chart(id) {
+      if (!state.charts[id]) {
+        state.charts[id] = echarts.init(document.getElementById(id));
+      }
+      return state.charts[id];
+    }
+
+    function formatNumber(value) {
+      return Number(value || 0).toLocaleString('zh-CN');
+    }
+
+    function formatBytes(value) {
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let size = Number(value || 0);
+      let index = 0;
+      while (size >= 1024 && index < units.length - 1) {
+        size /= 1024;
+        index += 1;
+      }
+      return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+    }
+
+    function formatMs(value) {
+      const number = Number(value || 0);
+      if (!number) return '暂无';
+      if (number >= 1000) return `${(number / 1000).toFixed(2)}s`;
+      return `${Math.round(number)}ms`;
+    }
+
+    function deltaText(item) {
+      const diff = Number(item.diff || 0);
+      const pct = Number(item.pct || 0);
+      if (diff === 0) return '较昨日持平';
+      const sign = diff > 0 ? '+' : '';
+      return `较昨日 ${sign}${formatNumber(diff)} (${sign}${pct}%)`;
+    }
+
+    function deltaClass(item) {
+      const diff = Number(item.diff || 0);
+      if (diff > 0) return 'up';
+      if (diff < 0) return 'down';
+      return '';
+    }
+
+    function renderKpis(data) {
+      const compare = data.kpis.day_compare || {};
+      const fields = [
+        ['pv', '今日 PV'],
+        ['uv', '今日 UV'],
+        ['downloads', '文件下载'],
+        ['artifact_success', '解析成功'],
+        ['api_calls', 'API 调用'],
+        ['analysis_jobs', 'AI 任务'],
+        ['reports', '分享报告'],
+        ['errors', '错误请求']
+      ];
+      $('#kpiGrid').innerHTML = fields.map(([key, label]) => {
+        const item = compare[key] || { current: 0, diff: 0, pct: 0 };
+        return `
+          <div class="panel kpi">
+            <div>
+              <div class="kpi-label">${label}</div>
+              <div class="kpi-value">${formatNumber(item.current)}</div>
+            </div>
+            <div class="delta ${deltaClass(item)}">${deltaText(item)}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderPeriodCompare(data) {
+      const compare = data.kpis.period_compare || {};
+      const fields = [
+        ['pv', 'PV'],
+        ['uv', 'UV'],
+        ['downloads', '下载'],
+        ['analysis_jobs', 'AI任务'],
+        ['api_calls', 'API'],
+        ['artifact_success', '解析'],
+        ['reports', '报告'],
+        ['errors', '错误']
+      ];
+      $('#periodCompare').innerHTML = fields.map(([key, label]) => {
+        const item = compare[key] || { current: 0, diff: 0, pct: 0 };
+        const sign = Number(item.diff || 0) > 0 ? '+' : '';
+        return `
+          <div class="comparison-item">
+            <strong>${formatNumber(item.current)}</strong>
+            <span>${label} ${sign}${item.pct || 0}%</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderTrafficChart(data) {
+      const dates = data.daily.map((item) => item.date.slice(5));
+      const series = [
+        ['PV', 'pv'],
+        ['UV', 'uv'],
+        ['API调用', 'api_calls'],
+        ['文件下载', 'downloads'],
+        ['解析成功', 'artifact_success']
+      ].map(([name, key]) => ({
+        name,
+        type: 'line',
+        smooth: true,
+        symbolSize: 5,
+        data: data.daily.map((item) => item[key] || 0)
+      }));
+      chart('trafficChart').setOption({
+        color: palette,
+        tooltip: { trigger: 'axis' },
+        legend: { top: 8, textStyle: { color: '#66727d' } },
+        grid: { left: 42, right: 18, top: 52, bottom: 34 },
+        xAxis: { type: 'category', data: dates, boundaryGap: false, axisLine: { lineStyle: { color: '#dfe6ea' } } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
+        series
+      }, true);
+    }
+
+    function renderFeatureChart(data) {
+      const dates = data.daily.map((item) => item.date.slice(5));
+      const series = (data.feature_trends || []).map((item) => ({
+        name: item.name,
+        type: 'bar',
+        stack: 'features',
+        emphasis: { focus: 'series' },
+        data: item.data || []
+      }));
+      chart('featureChart').setOption({
+        color: palette,
+        tooltip: { trigger: 'axis' },
+        legend: { top: 8, type: 'scroll', textStyle: { color: '#66727d' } },
+        grid: { left: 42, right: 18, top: 58, bottom: 34 },
+        xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#dfe6ea' } } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
+        series
+      }, true);
+    }
+
+    function renderDownloadChart(data) {
+      const rows = data.download_breakdown || [];
+      chart('downloadChart').setOption({
+        color: palette,
+        tooltip: { trigger: 'item' },
+        legend: { bottom: 8, textStyle: { color: '#66727d' } },
+        series: [{
+          type: 'pie',
+          radius: ['42%', '70%'],
+          center: ['50%', '45%'],
+          avoidLabelOverlap: true,
+          label: { formatter: '{b}: {c}' },
+          data: rows.length ? rows : [{ name: '暂无下载', value: 0 }]
+        }]
+      }, true);
+    }
+
+    function renderJobChart(data) {
+      const dates = data.daily.map((item) => item.date.slice(5));
+      const trends = (data.jobs.trends || []);
+      const series = trends.map((item) => ({
+        name: item.name,
+        type: 'bar',
+        stack: 'jobs',
+        data: item.data || []
+      }));
+      chart('jobChart').setOption({
+        color: palette,
+        tooltip: { trigger: 'axis' },
+        legend: { top: 4, type: 'scroll', textStyle: { color: '#66727d' } },
+        grid: { left: 40, right: 16, top: 52, bottom: 28 },
+        xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#dfe6ea' } } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
+        series
+      }, true);
+    }
+
+    function renderStatusChart(data) {
+      chart('statusChart').setOption({
+        color: ['#138a5b', '#0098c8', '#a86f16', '#bd3930', '#6955b8'],
+        tooltip: { trigger: 'item' },
+        legend: { bottom: 4, textStyle: { color: '#66727d' } },
+        series: [{
+          type: 'pie',
+          radius: ['46%', '72%'],
+          center: ['50%', '43%'],
+          label: { formatter: '{b}: {c}' },
+          data: (data.status_codes || []).map((item) => ({ name: item.name, value: item.value }))
+        }]
+      }, true);
+    }
+
+    function renderUaChart(data) {
+      chart('uaChart').setOption({
+        color: palette,
+        tooltip: { trigger: 'item' },
+        legend: { bottom: 4, textStyle: { color: '#66727d' } },
+        series: [{
+          type: 'pie',
+          radius: ['44%', '72%'],
+          center: ['50%', '43%'],
+          label: { formatter: '{b}: {c}' },
+          data: (data.top_user_agents || []).map((item) => ({ name: item.name, value: item.value }))
+        }]
+      }, true);
+    }
+
+    function renderSimpleTable(selector, rows, firstLabel, valueLabel) {
+      const target = $(selector);
+      if (!rows || rows.length === 0) {
+        target.innerHTML = `<tr><td colspan="2"><div class="empty">暂无数据</div></td></tr>`;
+        return;
+      }
+      target.innerHTML = rows.map((item) => `
+        <tr>
+          <td>${escapeHtml(item.name || firstLabel)}</td>
+          <td class="numeric">${formatNumber(item.value || 0)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function renderTables(data) {
+      renderSimpleTable('#pageTable', data.top_pages, '页面', 'PV');
+      renderSimpleTable('#referrerTable', data.top_referrers, '来源', '次数');
+      renderSimpleTable('#ipTable', data.top_ip_segments, '网段', '次数');
+      renderSimpleTable('#bvidTable', data.top_bvids, 'BV号', '热度');
+
+      $('#apiTable').innerHTML = (data.api_endpoints || []).length
+        ? data.api_endpoints.map((item) => `
+            <tr>
+              <td>${escapeHtml(item.name)}</td>
+              <td class="numeric">${formatNumber(item.value)}</td>
+              <td class="numeric"><span class="tag ${Number(item.error_rate) > 5 ? 'bad' : 'good'}">${item.error_rate}%</span></td>
+            </tr>
+          `).join('')
+        : '<tr><td colspan="3"><div class="empty">暂无接口调用</div></td></tr>';
+
+      $('#jobTable').innerHTML = (data.jobs.by_kind_status || []).length
+        ? data.jobs.by_kind_status.map((item) => `
+            <tr>
+              <td>${escapeHtml(item.kind)}</td>
+              <td><span class="tag ${item.status === '失败' ? 'bad' : (item.status === '运行中' || item.status === '排队中' ? 'warn' : 'good')}">${escapeHtml(item.status)}</span></td>
+              <td class="numeric">${formatNumber(item.count)}</td>
+            </tr>
+          `).join('')
+        : '<tr><td colspan="3"><div class="empty">暂无任务</div></td></tr>';
+
+      const inv = data.inventory || {};
+      const inventoryRows = [
+        ['下载目录', inv.downloads],
+        ['CSV 文件', inv.csv],
+        ['TXT 文件', inv.txt],
+        ['报告文件', inv.reports],
+        ['字幕文件', inv.subtitles],
+        ['插件包', inv.plugin_zip ? { count: inv.plugin_zip.exists ? 1 : 0, size_bytes: inv.plugin_zip.size_bytes, newest_mtime: inv.plugin_zip.mtime } : null]
+      ];
+      $('#inventoryTable').innerHTML = inventoryRows.map(([name, item]) => `
+        <tr>
+          <td>${name}</td>
+          <td class="numeric">${formatNumber((item && item.count) || 0)}</td>
+          <td class="numeric">${formatBytes((item && item.size_bytes) || 0)}</td>
+          <td>${escapeHtml((item && item.newest_mtime) || '')}</td>
+        </tr>
+      `).join('');
+
+      $('#errorTable').innerHTML = (data.recent_errors || []).length
+        ? data.recent_errors.map((item) => `
+            <tr>
+              <td>${escapeHtml(item.ts)}</td>
+              <td>${escapeHtml(item.message)}</td>
+            </tr>
+          `).join('')
+        : '<tr><td colspan="2"><div class="empty">当前范围内没有应用错误</div></td></tr>';
+    }
+
+    function renderMeta(data) {
+      const meta = data.meta || {};
+      const latency = data.latency || {};
+      const active = data.kpis.active_jobs || {};
+      $('#freshnessText').textContent = `更新 ${formatDateTime(meta.generated_at)} · p95 ${formatMs(latency.p95_ms)} · 队列 ${formatNumber(active.queued || 0)}/${formatNumber(active.running || 0)}`;
+      $('#scopeText').textContent = `${meta.range_start} 至 ${meta.range_end}，访问日志 ${formatBytes((meta.access_log || {}).size_bytes || 0)}，埋点样本 ${formatNumber((latency.events || 0))} 条。`;
+    }
+
+    function render(data) {
+      renderMeta(data);
+      renderKpis(data);
+      renderPeriodCompare(data);
+      renderTrafficChart(data);
+      renderFeatureChart(data);
+      renderDownloadChart(data);
+      renderJobChart(data);
+      renderStatusChart(data);
+      renderUaChart(data);
+      renderTables(data);
+    }
+
+    async function loadDashboard(days = state.days) {
+      state.days = days;
+      $('#dashboardRoot').classList.add('loading');
+      $('#errorBox').style.display = 'none';
+      $$('.rangebar button').forEach((button) => button.classList.toggle('active', Number(button.dataset.days) === Number(days)));
+      try {
+        const response = await fetch(`/api/v2/ops-dashboard?days=${encodeURIComponent(days)}`, { cache: 'no-store' });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+          throw new Error((payload.error && payload.error.message) || '看板数据读取失败');
+        }
+        state.data = payload.data;
+        render(payload.data);
+      } catch (error) {
+        $('#errorBox').textContent = error.message || String(error);
+        $('#errorBox').style.display = 'block';
+      } finally {
+        $('#dashboardRoot').classList.remove('loading');
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      })[char]);
+    }
+
+    function formatDateTime(value) {
+      if (!value) return '';
+      return String(value).replace('T', ' ').slice(0, 19);
+    }
+
+    function debounce(fn, wait) {
+      let timer = null;
+      return function debounced() {
+        clearTimeout(timer);
+        timer = setTimeout(fn, wait);
+      };
+    }
+
+    $$('.rangebar button').forEach((button) => {
+      button.addEventListener('click', () => loadDashboard(Number(button.dataset.days)));
+    });
+    $('#refreshButton').addEventListener('click', () => loadDashboard(state.days));
+    window.addEventListener('resize', debounce(() => {
+      Object.values(state.charts).forEach((instance) => instance.resize());
+    }, 160));
+    loadDashboard(30);
+  </script>
+</body>
+</html>
