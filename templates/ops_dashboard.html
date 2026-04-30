@@ -66,6 +66,12 @@
       align-items: center;
       gap: 12px;
       min-width: 220px;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .brand:hover strong {
+      color: var(--accent);
     }
 
     .brand-mark {
@@ -284,6 +290,19 @@
       white-space: nowrap;
     }
 
+    .kpi-title-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .heading-with-help {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
     .label-with-help {
       display: inline-flex;
       align-items: center;
@@ -297,18 +316,23 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 15px;
-      height: 15px;
+      width: 14px;
+      height: 14px;
       border: 1px solid var(--line);
       border-radius: 50%;
       background: #f8fafb;
       color: var(--muted);
-      font-size: 10px;
+      font-size: 9px;
       line-height: 1;
       font-weight: 700;
       cursor: help;
       user-select: none;
       flex: 0 0 auto;
+      opacity: 0.82;
+    }
+
+    .kpi-help {
+      margin-top: 1px;
     }
 
     .help-tip:hover,
@@ -316,6 +340,7 @@
       border-color: rgba(0, 152, 200, 0.5);
       color: var(--accent);
       outline: none;
+      opacity: 1;
     }
 
     .floating-tooltip {
@@ -671,13 +696,13 @@
 <body>
   <div class="shell">
     <header class="topbar">
-      <div class="brand" aria-label="小刘BOT danmuku 运营看板">
+      <a class="brand" href="/" aria-label="返回小刘BOT danmuku 首页">
         <div class="brand-mark"></div>
         <div>
           <strong>小刘BOT danmuku</strong>
           <span>运营看板</span>
         </div>
-      </div>
+      </a>
       <div class="range-controls">
         <div class="rangebar" role="group" aria-label="快速筛选">
           <button type="button" data-days="1">今日</button>
@@ -843,11 +868,8 @@
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>热门 BV</h3>
-              <span class="label-with-help">
-                <span id="bvidScopeText">按解析成功排序</span>
-                <span id="bvidHelpTip" class="help-tip" tabindex="0" aria-label="热门 BV 口径说明" data-tooltip="解析排行按成功生成结果排序，链接访问和分享报告只作为辅助线索。">?</span>
-              </span>
+              <h3 class="heading-with-help">热门 BV <span id="bvidHelpTip" class="help-tip" tabindex="0" aria-label="热门 BV 口径说明" data-tooltip="解析排行按成功生成结果排序，链接访问和分享报告只作为辅助线索。">?</span></h3>
+              <span id="bvidScopeText">按解析成功排序</span>
             </div>
             <div class="panel-tools">
               <div class="segmented" role="group" aria-label="BV 榜单">
@@ -865,7 +887,7 @@
         </div>
       </section>
 
-      <section class="section grid two-grid">
+      <section class="section">
         <div class="panel">
           <div class="panel-head">
             <div>
@@ -884,6 +906,9 @@
             </table>
           </div>
         </div>
+      </section>
+
+      <section class="section grid two-grid">
         <div class="panel">
           <div class="panel-head">
             <div>
@@ -896,6 +921,20 @@
             <table>
               <thead><tr><th>错误接口</th><th class="numeric">调用</th><th class="numeric">错误率</th></tr></thead>
               <tbody id="apiTable"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>最近访问错误</h3>
+              <span>来自访问日志，跟随日期和管理员 IP 过滤</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>时间</th><th>信息</th></tr></thead>
+              <tbody id="errorTable"></tbody>
             </table>
           </div>
         </div>
@@ -913,23 +952,6 @@
             <table>
               <thead><tr><th>任务</th><th>模型/通道</th><th>结果</th><th class="numeric">数量</th></tr></thead>
               <tbody id="jobTable"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <section class="section">
-        <div class="panel">
-          <div class="panel-head">
-            <div>
-              <h3>最近访问错误</h3>
-              <span>来自访问日志，跟随日期和管理员 IP 过滤</span>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>时间</th><th>信息</th></tr></thead>
-              <tbody id="errorTable"></tbody>
             </table>
           </div>
         </div>
@@ -975,15 +997,8 @@
     const BVID_HELP = {
       section: '热门 BV 默认按解析成功排序。解析成功用于判断用户真正处理了哪些视频；链接访问用于判断结果是否被复访、分享、插件跳转或直链消费；分享报告用于判断报告传播。',
       aiSection: 'AI 分析页签按后台任务表统计和 BV 关联的 AI 分析任务；这里的次数是任务数，不是模型接口调用次数。',
-      bvid: '视频 BV 号。',
-      title: '从 B 站公开信息补全的视频标题；太长时中间省略。',
-      author: '从 B 站公开信息补全的 UP 主名称。',
-      parses: '用户在站内提交 BV 并成功生成弹幕结果的次数。用它判断视频处理需求。',
       linkVisits: '结果页、下载页等 URL 中带 BV 的访问次数。常见于复访、分享链接、插件跳转、收藏夹或直链访问，用它判断结果消费和传播。',
-      reports: '围绕该 BV 保存或读取分享报告的次数。',
-      video: '跳转到 B 站原视频。',
-      aiAnalysis: '该 BV 关联的 AI 分析任务拆分，包括内容/深度分析以及成功/失败状态。',
-      aiCount: '该 BV 的 AI 分析任务总数，不是模型接口调用次数。'
+      aiCount: '这里统计的是该 BV 关联的 AI 分析任务数，不是模型接口调用次数。'
     };
 
     const $ = (selector) => document.querySelector(selector);
@@ -1045,15 +1060,15 @@
     function renderKpis(data) {
       const compare = data.kpis.range_compare || data.kpis.day_compare || {};
       const fields = [
-        ['pv', 'PV', KPI_HELP.pv],
+        ['pv', 'PV', ''],
         ['uv', 'UV去重', KPI_HELP.uv],
         ['daily_uv_sum', '日UV累计', KPI_HELP.daily_uv_sum],
-        ['artifact_success', '解析成功', KPI_HELP.artifact_success],
-        ['button_clicks', '按钮点击', KPI_HELP.button_clicks],
+        ['artifact_success', '解析成功', ''],
+        ['button_clicks', '按钮点击', ''],
         ['builtin_ai_calls', '内置AI接口', KPI_HELP.builtin_ai_calls],
         ['custom_ai_calls', '自主模型', KPI_HELP.custom_ai_calls],
         ['analysis_jobs', 'AI任务记录', KPI_HELP.analysis_jobs],
-        ['reports', '分享报告', KPI_HELP.reports],
+        ['reports', '分享报告', ''],
         ['bot_hits', 'Bot 流量', KPI_HELP.bot_hits]
       ];
       $('#kpiGrid').innerHTML = fields.map(([key, label, help]) => {
@@ -1061,7 +1076,10 @@
         return `
           <div class="panel kpi">
             <div>
-              <div class="kpi-label">${labelWithHelp(label, help)}</div>
+              <div class="kpi-title-row">
+                <div class="kpi-label">${escapeHtml(label)}</div>
+                ${helpTip(help, 'kpi-help')}
+              </div>
               <div class="kpi-value">${formatNumber(item.current)}</div>
             </div>
             <div class="delta ${deltaClass(item)}">${deltaText(item)}</div>
@@ -1073,30 +1091,30 @@
     function renderPeriodCompare(data) {
       const compare = data.kpis.period_compare || {};
       const fields = [
-        ['pv', 'PV', KPI_HELP.pv],
-        ['uv', 'UV去重', KPI_HELP.uv],
-        ['daily_uv_sum', '日UV', KPI_HELP.daily_uv_sum],
-        ['artifact_success', '解析', KPI_HELP.artifact_success],
-        ['button_clicks', '点击', KPI_HELP.button_clicks],
-        ['builtin_ai_calls', '内置AI接口', KPI_HELP.builtin_ai_calls],
-        ['custom_ai_calls', '自主模型', KPI_HELP.custom_ai_calls],
-        ['analysis_jobs', '任务记录', KPI_HELP.analysis_jobs],
-        ['reports', '报告', KPI_HELP.reports],
-        ['bot_hits', 'Bot', KPI_HELP.bot_hits]
+        ['pv', 'PV'],
+        ['uv', 'UV去重'],
+        ['daily_uv_sum', '日UV'],
+        ['artifact_success', '解析'],
+        ['button_clicks', '点击'],
+        ['builtin_ai_calls', '内置AI接口'],
+        ['custom_ai_calls', '自主模型'],
+        ['analysis_jobs', '任务记录'],
+        ['reports', '报告'],
+        ['bot_hits', 'Bot']
       ];
       const rows = fields
-        .map(([key, label, help]) => ({ key, label, help, item: compare[key] || null }))
+        .map(([key, label]) => ({ key, label, item: compare[key] || null }))
         .filter((row) => row.item && row.item.has_previous !== false);
       if (!rows.length) {
         $('#periodCompare').innerHTML = '<div class="empty">上一等长周期暂无数据</div>';
         return;
       }
-      $('#periodCompare').innerHTML = rows.map(({ label, help, item }) => {
+      $('#periodCompare').innerHTML = rows.map(({ label, item }) => {
         const sign = Number(item.diff || 0) > 0 ? '+' : '';
         return `
           <div class="comparison-item">
             <strong>${formatNumber(item.current)}</strong>
-            <span>${labelWithHelp(label, help)} ${sign}${item.pct || 0}%</span>
+            <span>${escapeHtml(label)} ${sign}${item.pct || 0}%</span>
           </div>
         `;
       }).join('');
@@ -1237,8 +1255,17 @@
       setChartOption('botSourceChart', {
         color: ['#0098c8'],
         tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-        grid: { left: 210, right: 34, top: 24, bottom: 30 },
-        xAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
+        grid: { left: 210, right: 58, top: 24, bottom: 30 },
+        xAxis: {
+          type: 'value',
+          splitNumber: 5,
+          axisLabel: {
+            color: '#66727d',
+            hideOverlap: true,
+            formatter: (value) => Number(value) >= 1000 ? `${Number(value) / 1000}k` : value
+          },
+          splitLine: { lineStyle: { color: '#edf1f3' } }
+        },
         yAxis: {
           type: 'category',
           data: sources.map((item) => item.name),
@@ -1303,8 +1330,8 @@
       const target = $('#bvidTable');
       const head = $('#bvidTableHead');
       head.innerHTML = isAi
-        ? `<tr><th>${labelWithHelp('BV号', BVID_HELP.bvid)}</th><th>${labelWithHelp('视频标题', BVID_HELP.title)}</th><th>${labelWithHelp('UP主', BVID_HELP.author)}</th><th>${labelWithHelp('AI分析', BVID_HELP.aiAnalysis)}</th><th>${labelWithHelp('视频', BVID_HELP.video)}</th><th class="numeric">${labelWithHelp('次数', BVID_HELP.aiCount)}</th></tr>`
-        : `<tr><th>${labelWithHelp('BV号', BVID_HELP.bvid)}</th><th>${labelWithHelp('视频标题', BVID_HELP.title)}</th><th>${labelWithHelp('UP主', BVID_HELP.author)}</th><th class="numeric">${labelWithHelp('解析成功', BVID_HELP.parses)}</th><th class="numeric">${labelWithHelp('链接访问', BVID_HELP.linkVisits)}</th><th class="numeric">${labelWithHelp('分享报告', BVID_HELP.reports)}</th><th>${labelWithHelp('视频', BVID_HELP.video)}</th></tr>`;
+        ? `<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th>AI分析</th><th>视频</th><th class="numeric">${labelWithHelp('次数', BVID_HELP.aiCount)}</th></tr>`
+        : `<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th class="numeric">解析成功</th><th class="numeric">${labelWithHelp('链接访问', BVID_HELP.linkVisits)}</th><th class="numeric">分享报告</th><th>视频</th></tr>`;
       if (!rows || rows.length === 0) {
         target.innerHTML = `<tr><td colspan="${isAi ? 6 : 7}"><div class="empty">暂无 BV 数据</div></td></tr>`;
         return;
@@ -1748,10 +1775,11 @@
       })[char]);
     }
 
-    function helpTip(text) {
+    function helpTip(text, extraClass = '') {
       if (!text) return '';
       const escaped = escapeHtml(text);
-      return `<span class="help-tip" tabindex="0" aria-label="${escaped}" data-tooltip="${escaped}">?</span>`;
+      const classes = ['help-tip', extraClass].filter(Boolean).join(' ');
+      return `<span class="${escapeHtml(classes)}" tabindex="0" aria-label="${escaped}" data-tooltip="${escaped}">?</span>`;
     }
 
     function labelWithHelp(label, text) {
