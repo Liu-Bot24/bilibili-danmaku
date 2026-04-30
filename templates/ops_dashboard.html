@@ -402,6 +402,10 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
+    .browser-source-grid {
+      align-items: start;
+    }
+
     .panel-head {
       min-height: 56px;
       padding: 14px 16px 8px;
@@ -465,6 +469,11 @@
     .chart.small {
       height: 260px;
       min-height: 260px;
+    }
+
+    .browser-chart {
+      height: 300px;
+      min-height: 300px;
     }
 
     .chart.compact {
@@ -821,15 +830,15 @@
         </div>
       </section>
 
-      <section class="section grid two-grid">
+      <section class="section grid two-grid browser-source-grid">
         <div class="panel">
           <div class="panel-head">
             <div>
               <h3>浏览器分布</h3>
-              <span>按范围去重 UV 粗分类</span>
+              <span>按范围去重 UV 排名</span>
             </div>
           </div>
-          <div id="uaChart" class="chart small"></div>
+          <div id="uaChart" class="chart browser-chart"></div>
         </div>
         <div class="panel">
           <div class="panel-head">
@@ -1219,16 +1228,38 @@
     }
 
     function renderUaChart(data) {
+      const browsers = (data.top_user_agents || []).slice(0, 8).reverse();
       setChartOption('uaChart', {
-        color: palette,
-        tooltip: { trigger: 'item' },
-        legend: { bottom: 4, textStyle: { color: '#66727d' } },
+        color: ['#0098c8'],
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 112, right: 64, top: 22, bottom: 30 },
+        xAxis: {
+          type: 'value',
+          splitNumber: 4,
+          axisLabel: {
+            color: '#66727d',
+            hideOverlap: true,
+            formatter: (value) => Number(value) >= 1000 ? `${Number(value) / 1000}k` : value
+          },
+          splitLine: { lineStyle: { color: '#edf1f3' } }
+        },
+        yAxis: {
+          type: 'category',
+          data: browsers.map((item) => item.name),
+          axisLine: { lineStyle: { color: '#dfe6ea' } },
+          axisLabel: { color: '#66727d', interval: 0, width: 98, overflow: 'truncate' }
+        },
         series: [{
-          type: 'pie',
-          radius: ['44%', '72%'],
-          center: ['50%', '43%'],
-          label: { formatter: '{b}: {c} UV' },
-          data: (data.top_user_agents || []).map((item) => ({ name: item.name, value: item.value }))
+          name: 'UV去重',
+          type: 'bar',
+          data: browsers.map((item) => item.value || 0),
+          label: {
+            show: true,
+            position: 'right',
+            color: '#66727d',
+            formatter: (item) => `${formatNumber(item.value)} UV`
+          },
+          barMaxWidth: 18
         }]
       });
     }
