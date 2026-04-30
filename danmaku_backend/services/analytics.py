@@ -132,7 +132,7 @@ BOT_SOURCE_RULES = (
 )
 INTERNAL_HOSTS = {"danmu.liu-qi.cn", "dm.liu-qi.cn"}
 ANALYTICS_CACHE_SECONDS = 900
-OPS_DASHBOARD_CACHE_SCHEMA = "ops-v8-uv-modes"
+OPS_DASHBOARD_CACHE_SCHEMA = "ops-v9-region-total"
 VIDEO_META_FETCH_LIMIT = 6
 MAX_ACCESS_LOG_BYTES = 80 * 1024 * 1024
 OPS_VIDEO_META_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_video_meta.json")
@@ -480,6 +480,7 @@ def build_ops_dashboard(
             },
             "notes": [
                 "PV、UV去重与日UV累计默认排除明显爬虫与命令行探测流量。",
+                "Bot流量单列统计，不计入PV、UV、地区与用户归因。",
                 "可按管理员 IP 过滤访问日志、按钮埋点以及可关联的解析/任务/报告数据。",
                 "地区来源基于聚合网段做近似归类，不返回完整原始 IP。",
                 "按钮点击从前端埋点上线后开始累计。",
@@ -1245,6 +1246,7 @@ def _kpis(
         ("custom_ai_calls", "自主模型"),
         ("analysis_jobs", "AI任务"),
         ("reports", "分享报告"),
+        ("bot_hits", "Bot流量"),
     ]
     range_totals = _period_totals(daily, fields, range_uv)
     previous_totals = _period_totals(previous_daily, fields, previous_range_uv)
@@ -1862,10 +1864,10 @@ def _region_items_from_segment_visitors(
     if not segment_counts:
         return []
     cache = _read_ip_region_cache()
-    top_segments = segment_counts.most_common(200)
+    all_segments = [segment for segment, _ in segment_counts.most_common()]
     missing = [
         segment
-        for segment, _ in top_segments[:48]
+        for segment in all_segments[:48]
         if (
             segment not in cache
             or _is_placeholder_region((cache.get(segment) or {}).get("label"))
@@ -1887,7 +1889,7 @@ def _region_items_from_segment_visitors(
                     changed = True
     labels_by_segment: dict[str, str] = {}
     visitors_by_region: dict[str, set[str]] = defaultdict(set)
-    for segment, _ in top_segments:
+    for segment in all_segments:
         label, did_fetch = _region_label_for_segment(segment, cache, False)
         changed = changed or did_fetch
         if not label or _is_placeholder_region(label):
@@ -1917,7 +1919,27 @@ def _region_items_from_segment_visitors(
         if visitors
     ]
     rows.sort(key=lambda item: item["value"], reverse=True)
-    return rows[:limit]
+    total_range_uv = sum(len(visitors) for visitors in segment_visitors.values())
+    total_daily_uv = sum(
+        len(visitors)
+        for values_by_segment in (daily_segment_visitors or {}).values()
+        for visitors in values_by_segment.values()
+    )
+    visible = rows[: max(0, limit - 1)] if limit and len(rows) >= limit else rows[:limit]
+    visible_range_uv = sum(int(item.get("value") or 0) for item in visible)
+    visible_daily_uv = sum(int(item.get("daily_uv") or 0) for item in visible)
+    other_range_uv = max(0, total_range_uv - visible_range_uv)
+    other_daily_uv = max(0, total_daily_uv - visible_daily_uv)
+    if other_range_uv or other_daily_uv:
+        visible.append(
+            {
+                "name": "其他地区",
+                "value": other_range_uv,
+                "uv": other_range_uv,
+                "daily_uv": other_daily_uv,
+            }
+        )
+    return visible
 
 
 def _region_label_for_segment(segment: str, cache: dict[str, dict[str, Any]], can_fetch: bool) -> tuple[str, bool]:
@@ -2302,6 +2324,7 @@ def _period_has_data(rows: list[dict[str, Any]]) -> bool:
         "custom_ai_calls",
         "analysis_jobs",
         "reports",
+        "bot_hits",
     )
     return any(any(row.get(field, 0) or 0 for field in fields) for row in rows)
 

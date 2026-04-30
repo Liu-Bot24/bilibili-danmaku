@@ -259,7 +259,7 @@
     }
 
     .kpi-grid {
-      grid-template-columns: repeat(9, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     }
 
     .panel {
@@ -295,7 +295,9 @@
       margin-top: 10px;
       font-size: 12px;
       color: var(--muted);
-      white-space: nowrap;
+      line-height: 1.35;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
 
     .delta.up {
@@ -654,7 +656,7 @@
         <div class="section-head">
           <div>
             <h1>范围概览</h1>
-            <p id="scopeText">PV、UV去重与日UV累计已排除明显爬虫；按钮点击、AI 分析和分享行为按运营口径汇总。</p>
+            <p id="scopeText">PV、UV去重与日UV累计已排除明显爬虫；Bot 流量单列统计。</p>
           </div>
         </div>
         <div class="grid kpi-grid" id="kpiGrid"></div>
@@ -666,7 +668,7 @@
           <div class="panel-head">
             <div>
               <h3>运营趋势</h3>
-              <span>PV、日UV、解析成功、按钮点击、AI 与分享</span>
+              <span>PV、日UV、解析成功、按钮点击、AI、分享与 Bot</span>
             </div>
           </div>
           <div id="trafficChart" class="chart"></div>
@@ -769,7 +771,7 @@
           <div class="panel-head">
             <div>
               <h3>地区分布</h3>
-              <span>按范围去重页面 UV 归属近似归类（Top 地区）</span>
+              <span>Top 地区，其他地区补齐总量；不含 Bot 流量</span>
             </div>
           </div>
           <div class="table-wrap">
@@ -967,7 +969,8 @@
         ['builtin_ai_calls', '内置 AI'],
         ['custom_ai_calls', '自主模型'],
         ['analysis_jobs', 'AI 任务'],
-        ['reports', '分享报告']
+        ['reports', '分享报告'],
+        ['bot_hits', 'Bot 流量']
       ];
       $('#kpiGrid').innerHTML = fields.map(([key, label]) => {
         const item = compare[key] || { current: 0, diff: 0, pct: 0 };
@@ -994,7 +997,8 @@
         ['builtin_ai_calls', '内置AI'],
         ['custom_ai_calls', '自主模型'],
         ['analysis_jobs', 'AI任务'],
-        ['reports', '报告']
+        ['reports', '报告'],
+        ['bot_hits', 'Bot']
       ];
       const rows = fields
         .map(([key, label]) => ({ key, label, item: compare[key] || null }))
@@ -1023,7 +1027,8 @@
         ['按钮点击', 'button_clicks'],
         ['内置AI', 'builtin_ai_calls'],
         ['自主模型', 'custom_ai_calls'],
-        ['分享报告', 'reports']
+        ['分享报告', 'reports'],
+        ['Bot流量', 'bot_hits']
       ].map(([name, key]) => ({
         name,
         type: 'line',
@@ -1305,7 +1310,7 @@
       const filterText = filter.enabled ? `，已过滤管理员 IP ${escapeHtml((filter.ips || []).join('、'))}` : '';
       const totals = ((data.kpis || {}).range_totals || {});
       const uvText = `UV去重 ${formatNumber(totals.uv || 0)}，日UV累计 ${formatNumber(totals.daily_uv_sum || 0)}`;
-      $('#scopeText').textContent = `${meta.range_start} 至 ${meta.range_end}，${uvText}，访问日志 ${formatBytes((meta.access_log || {}).size_bytes || 0)}，按钮点击 ${formatNumber((data.daily || []).reduce((sum, item) => sum + Number(item.button_clicks || 0), 0))} 次${filterText}。`;
+      $('#scopeText').textContent = `${meta.range_start} 至 ${meta.range_end}，${uvText}，Bot流量 ${formatNumber(totals.bot_hits || 0)} 次，访问日志 ${formatBytes((meta.access_log || {}).size_bytes || 0)}，按钮点击 ${formatNumber((data.daily || []).reduce((sum, item) => sum + Number(item.button_clicks || 0), 0))} 次${filterText}。`;
     }
 
     function render(data) {
@@ -1455,7 +1460,7 @@
       $('#errorBox').style.display = 'none';
       $('#freshnessText').textContent = `正在读取 ${request.label}`;
       $('#scopeText').textContent = `正在读取 ${request.label}，返回数据与当前筛选匹配后才会更新看板。`;
-      $('#kpiGrid').innerHTML = Array.from({ length: 9 }).map(() => `
+      $('#kpiGrid').innerHTML = Array.from({ length: 10 }).map(() => `
         <div class="panel kpi">
           <div>
             <div class="kpi-label loading-note">读取中</div>
