@@ -649,7 +649,7 @@
       <section class="section">
         <div class="section-head">
           <div>
-            <h1>今日概览</h1>
+            <h1>范围概览</h1>
             <p id="scopeText">PV/UV 已排除明显爬虫；按钮点击、AI 分析和分享行为按运营口径汇总。</p>
           </div>
         </div>
@@ -857,8 +857,8 @@
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>最近应用错误</h3>
-              <span>来自 app.log 的错误级别记录</span>
+              <h3>最近访问错误</h3>
+              <span>来自访问日志，跟随日期和管理员 IP 过滤</span>
             </div>
           </div>
           <div class="table-wrap">
@@ -930,9 +930,9 @@
     function deltaText(item) {
       const diff = Number(item.diff || 0);
       const pct = Number(item.pct || 0);
-      if (diff === 0) return '较昨日持平';
+      if (diff === 0) return '较上一日持平';
       const sign = diff > 0 ? '+' : '';
-      return `较昨日 ${sign}${formatNumber(diff)} (${sign}${pct}%)`;
+      return `较上一日 ${sign}${formatNumber(diff)} (${sign}${pct}%)`;
     }
 
     function deltaClass(item) {
@@ -945,8 +945,8 @@
     function renderKpis(data) {
       const compare = data.kpis.day_compare || {};
       const fields = [
-        ['pv', '今日 PV'],
-        ['uv', '今日 UV'],
+        ['pv', 'PV'],
+        ['uv', 'UV'],
         ['artifact_success', '解析成功'],
         ['button_clicks', '按钮点击'],
         ['builtin_ai_calls', '内置 AI'],

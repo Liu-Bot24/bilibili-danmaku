@@ -415,7 +415,6 @@ def build_ops_dashboard(
     artifacts = _artifact_metrics(date_keys, excluded_analysis_ids)
     jobs = _job_metrics(date_keys, excluded_analysis_ids)
     reports = _report_metrics(date_keys, excluded_analysis_ids)
-    app_errors = _app_log_errors(date_keys)
 
     daily = _merge_daily(
         date_keys,
@@ -424,7 +423,7 @@ def build_ops_dashboard(
         artifacts["daily"],
         jobs["daily"],
         reports["daily"],
-        app_errors["daily"],
+        {},
     )
     dashboard = {
         "meta": {
@@ -436,10 +435,8 @@ def build_ops_dashboard(
                 "Nginx access log",
                 "SQLite artifact_records/jobs/analytics_events",
                 "reports JSON",
-                "app.log errors",
             ],
             "access_log": _file_freshness(ACCESS_LOG_FILE),
-            "app_log": _file_freshness(LOG_FILE),
             "admin_filter": {
                 "enabled": bool(excluded_ips),
                 "ips": sorted(excluded_ips),
@@ -484,7 +481,7 @@ def build_ops_dashboard(
         "artifacts": artifacts["summary"],
         "reports": reports["summary"],
         "latency": events["latency"],
-        "recent_errors": app_errors["recent"],
+        "recent_errors": access["recent_errors"],
     }
 
     with _dashboard_cache_lock:
@@ -590,6 +587,7 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
     bot_paths: Counter[str] = Counter()
     bot_daily: dict[str, Counter[str]] = defaultdict(Counter)
     bot_source_daily: dict[str, Counter[str]] = defaultdict(Counter)
+    recent_errors: list[dict[str, str]] = []
 
     for path in _access_log_paths():
         for row in _iter_access_log(path):
@@ -616,6 +614,12 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
                 bot_paths[f"{bot_source} · {label}"] += 1
             if status >= 400:
                 day["errors"] += 1
+                recent_errors.append(
+                    {
+                        "ts": str(row.get("ts") or date_key),
+                        "message": _safe_message(f"{status} {row['method']} {row['path']} · {label}"),
+                    }
+                )
             if category in API_CATEGORIES:
                 day["api_calls"] += 1
                 api_endpoints[label] += 1
@@ -686,6 +690,7 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
             "family_trends": _counter_trends(date_keys, bot_daily, ["AI Bot", "搜索引擎蜘蛛", "工具/脚本", "其他 Bot"]),
             "paths": _counter_items(bot_paths, 10),
         },
+        "recent_errors": sorted(recent_errors, key=lambda item: item["ts"], reverse=True)[:12],
     }
 
 
@@ -789,6 +794,9 @@ def _artifact_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | No
     for row in rows:
         if str(row["analysis_id"] or "") in excluded_analysis_ids:
             continue
+        date_key = _date_from_iso(row["created_at"])
+        if date_key not in date_set:
+            continue
         total_records += 1
         count = int(row["count"] or 0)
         total_danmaku += count
@@ -797,9 +805,6 @@ def _artifact_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | No
             top_bvids[bvid] += 1
         if row["subtitle_filename"]:
             subtitle_records += 1
-        date_key = _date_from_iso(row["created_at"])
-        if date_key not in date_set:
-            continue
         daily[date_key]["artifact_success"] += 1
         daily[date_key]["danmaku_lines"] += count
         if row["subtitle_filename"]:
@@ -859,11 +864,11 @@ def _job_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | None = 
             continue
         kind = str(row["kind"] or "unknown")
         status = str(row["status"] or "unknown")
-        if status in active:
-            active[status] += 1
         date_key = _date_from_iso(row["created_at"])
         label = f"{_job_kind_label(kind)} / {_job_status_label(status)}"
         if date_key in date_set:
+            if status in active:
+                active[status] += 1
             by_kind_status[f"{kind}:{status}"] += 1
             model_label, model_outcome = _job_model_outcome(status, events_by_job.get(str(row["job_id"])) or [])
             by_model_status[(_job_kind_label(kind), model_label, model_outcome)] += 1
@@ -946,33 +951,44 @@ def _report_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | None
     video_meta: dict[str, dict[str, str]] = {}
     active_reports = 0
     archived_reports = 0
+
+    def collect_report(report: dict[str, Any] | None, archived: bool = False) -> None:
+        nonlocal active_reports, archived_reports
+        if not report:
+            return
+        if str(report.get("analysis_id") or "") in excluded_analysis_ids:
+            return
+        date_key = _date_from_iso(report.get("created_at"))
+        if date_key not in date_set:
+            return
+        if archived:
+            archived_reports += 1
+        else:
+            active_reports += 1
+        daily[date_key]["reports"] += 1
+        bvid = str(report.get("bvid") or "")
+        if not bvid:
+            return
+        top_bvids[bvid] += 1
+        video_info = (report.get("snapshot") or {}).get("video_info") or {}
+        if isinstance(video_info, dict):
+            title = str(video_info.get("title") or "").strip()
+            author = str(video_info.get("author") or "").strip()
+            if title or author:
+                video_meta[bvid] = {
+                    "title": title,
+                    "author": author,
+                    "url": f"https://www.bilibili.com/video/{bvid}",
+                }
+
     for path in REPORT_DIR.glob("*.json") if REPORT_DIR.exists() else []:
         if path.name == "config.json":
             continue
-        report = _read_json(path)
-        if not report:
-            continue
-        if str(report.get("analysis_id") or "") in excluded_analysis_ids:
-            continue
-        active_reports += 1
-        bvid = str(report.get("bvid") or "")
-        if bvid:
-            top_bvids[bvid] += 1
-            video_info = (report.get("snapshot") or {}).get("video_info") or {}
-            if isinstance(video_info, dict):
-                title = str(video_info.get("title") or "").strip()
-                author = str(video_info.get("author") or "").strip()
-                if title or author:
-                    video_meta[bvid] = {
-                        "title": title,
-                        "author": author,
-                        "url": f"https://www.bilibili.com/video/{bvid}",
-                    }
-        date_key = _date_from_iso(report.get("created_at"))
-        if date_key in date_set:
-            daily[date_key]["reports"] += 1
+        collect_report(_read_json(path), False)
     if REPORT_ARCHIVE_DIR.exists():
-        archived_reports = sum(1 for path in REPORT_ARCHIVE_DIR.glob("*.json") if path.is_file())
+        for path in REPORT_ARCHIVE_DIR.glob("*.json"):
+            if path.is_file():
+                collect_report(_read_json(path), True)
     return {
         "daily": daily,
         "top_bvids": top_bvids,
@@ -1441,9 +1457,10 @@ def _iter_access_log(path: Path):
                 match = ACCESS_LOG_RE.match(line.strip())
                 if not match:
                     continue
-                date_key = _access_date_key(match.group("time"))
-                if not date_key:
+                parsed_time = _parse_access_time(match.group("time"))
+                if not parsed_time:
                     continue
+                date_key = parsed_time.date().isoformat()
                 method = match.group("method").upper()
                 target = match.group("target")
                 path_value, query_string = _target_path_query(target)
@@ -1457,6 +1474,7 @@ def _iter_access_log(path: Path):
                     size = 0
                 yield {
                     "date": date_key,
+                    "ts": parsed_time.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
                     "method": method,
                     "target": target,
                     "path": path_value,
