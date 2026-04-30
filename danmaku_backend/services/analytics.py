@@ -1155,9 +1155,22 @@ def _kpis(daily: list[dict[str, Any]], jobs: dict[str, Any], events: dict[str, A
         ("analysis_jobs", "AI任务"),
         ("reports", "分享报告"),
     ]
+    range_totals = {field: _sum_field(daily, field) for field, _ in fields}
     return {
         "today": today,
         "yesterday": yesterday,
+        "range_totals": range_totals,
+        "range_compare": {
+            field: {
+                "label": label,
+                "current": range_totals.get(field, 0),
+                "previous": None,
+                "diff": 0,
+                "pct": 0,
+                "scope": "range",
+            }
+            for field, label in fields
+        },
         "day_compare": {
             field: _comparison(today.get(field, 0), yesterday.get(field, 0), label)
             for field, label in fields

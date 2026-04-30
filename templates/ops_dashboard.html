@@ -940,6 +940,7 @@
     }
 
     function deltaText(item) {
+      if (item.scope === 'range') return '当前范围合计';
       const diff = Number(item.diff || 0);
       const pct = Number(item.pct || 0);
       if (diff === 0) return '较上一日持平';
@@ -948,6 +949,7 @@
     }
 
     function deltaClass(item) {
+      if (item.scope === 'range') return '';
       const diff = Number(item.diff || 0);
       if (diff > 0) return 'up';
       if (diff < 0) return 'down';
@@ -955,7 +957,7 @@
     }
 
     function renderKpis(data) {
-      const compare = data.kpis.day_compare || {};
+      const compare = data.kpis.range_compare || data.kpis.day_compare || {};
       const fields = [
         ['pv', 'PV'],
         ['uv', 'UV'],
