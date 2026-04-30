@@ -217,6 +217,31 @@ OPERATING_FEATURE_CATEGORIES = {
     "report_save",
     "report_view",
 }
+FEATURE_TREND_PRIORITY = [
+    "弹幕解析",
+    "CSV下载",
+    "TXT下载",
+    "内置内容分析",
+    "自主内容分析",
+    "内置深度分析",
+    "自主深度分析",
+    "分享报告保存",
+    "分享报告读取",
+    "字幕上传",
+]
+CLICK_TREND_PRIORITY = [
+    "解析弹幕按钮",
+    "下载 CSV",
+    "下载 TXT",
+    "内置内容分析",
+    "自主内容分析",
+    "内置深度分析",
+    "自主深度分析",
+    "分享报告按钮",
+    "插件 GitHub 链接",
+    "获取 API Key",
+]
+AI_ANALYSIS_PRIORITY = ["内置内容分析", "自主内容分析", "内置深度分析", "自主深度分析"]
 IP_REGION_LABEL_BLACKLIST = {"未知地区", "待归类地区", "其他地区"}
 COUNTRY_LABELS = {
     "CN": "中国",
@@ -451,25 +476,42 @@ def build_ops_dashboard(
         },
         "kpis": _kpis(daily, jobs, events),
         "daily": daily,
+        "feature_actions": _counter_items_with_uv(access["feature_totals"], access["feature_visitors"], 16),
         "feature_trends": _feature_trends(date_keys, access["feature_daily"]),
+        "feature_uv_trends": _visitor_trends(date_keys, access["feature_uv_daily"], FEATURE_TREND_PRIORITY, 9),
         "click_actions": events["click_actions"],
         "click_trends": events["click_trends"],
-        "ai_mode_breakdown": _counter_items(access["ai_modes"]),
-        "ai_mode_details": _counter_items(access["ai_mode_details"]),
+        "click_uv_trends": events["click_uv_trends"],
+        "ai_mode_breakdown": _counter_items_with_uv(access["ai_modes"], access["ai_mode_visitors"]),
+        "ai_mode_details": _counter_items_with_uv(access["ai_mode_details"], access["ai_detail_visitors"]),
         "ai_mode_trends": _counter_trends(date_keys, access["ai_mode_daily"], ["内置 AI", "自主模型"]),
-        "ai_analysis_breakdown": _counter_items(access["ai_mode_details"]),
+        "ai_mode_uv_trends": _visitor_trends(date_keys, access["ai_mode_uv_daily"], ["内置 AI", "自主模型"]),
+        "ai_analysis_breakdown": _counter_items_with_uv(access["ai_mode_details"], access["ai_detail_visitors"]),
         "ai_analysis_trends": _counter_trends(
             date_keys,
             access["ai_detail_daily"],
-            ["内置内容分析", "自主内容分析", "内置深度分析", "自主深度分析"],
+            AI_ANALYSIS_PRIORITY,
         ),
+        "ai_analysis_uv_trends": _visitor_trends(date_keys, access["ai_detail_uv_daily"], AI_ANALYSIS_PRIORITY),
         "download_breakdown": _counter_items(access["download_breakdown"]),
         "status_codes": _counter_items(access["status_codes"]),
         "api_endpoints": _api_endpoint_items(access["api_endpoints"], access["api_endpoint_errors"]),
-        "top_pages": _counter_items(access["top_pages"], 10),
-        "top_referrers": _counter_items(access["top_referrers"], 10),
+        "top_pages": _counter_items_with_uv(access["top_pages"], access["page_visitors"], 10),
+        "top_referrers": _counter_items_with_uv(
+            access["top_referrers"],
+            access["referrer_visitors"],
+            10,
+            uv_as_value=True,
+            count_key="visits",
+        ),
         "top_regions": access["top_regions"],
-        "top_user_agents": _counter_items(access["top_user_agents"], 8),
+        "top_user_agents": _counter_items_with_uv(
+            access["top_user_agents"],
+            access["user_agent_visitors"],
+            8,
+            uv_as_value=True,
+            count_key="visits",
+        ),
         "bot_traffic": access["bot_traffic"],
         "top_bvids": _top_bvids(
             access["top_bvids"],
@@ -570,19 +612,29 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
     date_set = set(date_keys)
     visitors: dict[str, set[str]] = defaultdict(set)
     feature_daily: dict[str, Counter[str]] = defaultdict(Counter)
+    feature_totals: Counter[str] = Counter()
+    feature_uv_daily: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+    feature_visitors: dict[str, set[str]] = defaultdict(set)
     top_pages: Counter[str] = Counter()
+    page_visitors: dict[str, set[str]] = defaultdict(set)
     top_referrers: Counter[str] = Counter()
+    referrer_visitors: dict[str, set[str]] = defaultdict(set)
     region_visitors: dict[str, set[str]] = defaultdict(set)
     top_user_agents: Counter[str] = Counter()
+    user_agent_visitors: dict[str, set[str]] = defaultdict(set)
     top_bvids: Counter[str] = Counter()
     download_breakdown: Counter[str] = Counter()
     status_codes: Counter[str] = Counter()
     api_endpoints: Counter[str] = Counter()
     api_endpoint_errors: Counter[str] = Counter()
     ai_modes: Counter[str] = Counter()
+    ai_mode_visitors: dict[str, set[str]] = defaultdict(set)
     ai_mode_details: Counter[str] = Counter()
     ai_mode_daily: dict[str, Counter[str]] = defaultdict(Counter)
+    ai_mode_uv_daily: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     ai_detail_daily: dict[str, Counter[str]] = defaultdict(Counter)
+    ai_detail_uv_daily: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+    ai_detail_visitors: dict[str, set[str]] = defaultdict(set)
     bot_families: Counter[str] = Counter()
     bot_sources: Counter[str] = Counter()
     bot_paths: Counter[str] = Counter()
@@ -633,31 +685,42 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
                     day["plugin_downloads"] += 1
             is_operator_or_asset = category in SKIP_ANALYTICS_CATEGORIES or category == "seo_file"
             if not is_bot and not is_operator_or_asset:
+                visitor_key = _ip_hash(row["ip"])
                 if category in OPERATING_FEATURE_CATEGORIES and status < 500:
                     if category in AI_MODE_LABELS:
                         _, detail, _ = AI_MODE_LABELS[category]
-                        feature_daily[date_key][detail] += 1
+                        feature_label = detail
                     else:
-                        feature_daily[date_key][label] += 1
+                        feature_label = label
+                    feature_daily[date_key][feature_label] += 1
+                    feature_totals[feature_label] += 1
+                    feature_uv_daily[date_key][feature_label].add(visitor_key)
+                    feature_visitors[feature_label].add(visitor_key)
                 if category in AI_MODE_LABELS and status < 500:
                     mode, detail, field = AI_MODE_LABELS[category]
                     day["ai_calls"] += 1
                     day[field] += 1
                     ai_modes[mode] += 1
+                    ai_mode_visitors[mode].add(visitor_key)
                     ai_mode_details[detail] += 1
                     ai_mode_daily[date_key][mode] += 1
+                    ai_mode_uv_daily[date_key][mode].add(visitor_key)
                     ai_detail_daily[date_key][detail] += 1
+                    ai_detail_uv_daily[date_key][detail].add(visitor_key)
+                    ai_detail_visitors[detail].add(visitor_key)
                 if category in PAGE_CATEGORIES and row["method"] == "GET" and status < 500:
                     day["pv"] += 1
-                    visitor_key = _ip_hash(row["ip"])
                     visitors[date_key].add(visitor_key)
                     region_visitors[_ip_segment(row["ip"])].add(visitor_key)
                     top_pages[label] += 1
-                if category in PAGE_CATEGORIES:
-                    top_user_agents[_user_agent_family(row["ua"])] += 1
-                referer_domain = _referer_domain(row["referer"])
-                if referer_domain:
-                    top_referrers[referer_domain] += 1
+                    page_visitors[label].add(visitor_key)
+                    user_agent = _user_agent_family(row["ua"])
+                    top_user_agents[user_agent] += 1
+                    user_agent_visitors[user_agent].add(visitor_key)
+                    referer_domain = _referer_domain(row["referer"])
+                    if referer_domain:
+                        top_referrers[referer_domain] += 1
+                        referrer_visitors[referer_domain].add(visitor_key)
                 if row["bvid"]:
                     top_bvids[row["bvid"]] += 1
 
@@ -666,19 +729,29 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
     return {
         "daily": daily,
         "feature_daily": feature_daily,
+        "feature_totals": feature_totals,
+        "feature_uv_daily": feature_uv_daily,
+        "feature_visitors": feature_visitors,
         "top_pages": top_pages,
+        "page_visitors": page_visitors,
         "top_referrers": top_referrers,
+        "referrer_visitors": referrer_visitors,
         "top_ip_segments": Counter({segment: len(values) for segment, values in region_visitors.items()}),
         "top_user_agents": top_user_agents,
+        "user_agent_visitors": user_agent_visitors,
         "top_bvids": top_bvids,
         "download_breakdown": download_breakdown,
         "status_codes": status_codes,
         "api_endpoints": api_endpoints,
         "api_endpoint_errors": api_endpoint_errors,
         "ai_modes": ai_modes,
+        "ai_mode_visitors": ai_mode_visitors,
         "ai_mode_details": ai_mode_details,
         "ai_mode_daily": ai_mode_daily,
+        "ai_mode_uv_daily": ai_mode_uv_daily,
         "ai_detail_daily": ai_detail_daily,
+        "ai_detail_uv_daily": ai_detail_uv_daily,
+        "ai_detail_visitors": ai_detail_visitors,
         "top_regions": _region_items_from_segment_visitors(region_visitors, 16),
         "bot_traffic": {
             "families": _counter_items(bot_families, 8),
@@ -703,7 +776,9 @@ def _analytics_event_metrics(date_keys: list[str], excluded_ip_hashes: set[str] 
     durations: list[float] = []
     durations_by_category: dict[str, list[float]] = defaultdict(list)
     clicks: Counter[str] = Counter()
+    click_visitors: dict[str, set[str]] = defaultdict(set)
     click_daily: dict[str, Counter[str]] = defaultdict(Counter)
+    click_uv_daily: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     event_count = 0
     excluded_analysis_ids: set[str] = set()
     with connect_state_db(STATE_DB_PATH) as conn:
@@ -729,6 +804,10 @@ def _analytics_event_metrics(date_keys: list[str], excluded_ip_hashes: set[str] 
             label = _click_event_label(category)
             clicks[label] += 1
             click_daily[row["date"]][label] += 1
+            ip_hash = str(row["ip_hash"] or "")
+            if ip_hash:
+                click_visitors[label].add(ip_hash)
+                click_uv_daily[row["date"]][label].add(ip_hash)
             daily[row["date"]]["button_clicks"] += 1
             continue
         value = float(row["duration_ms"] or 0)
@@ -748,23 +827,13 @@ def _analytics_event_metrics(date_keys: list[str], excluded_ip_hashes: set[str] 
     ][:10]
     return {
         "daily": daily,
-        "click_actions": _counter_items(clicks, 16),
+        "click_actions": _counter_items_with_uv(clicks, click_visitors, 16),
         "click_trends": _counter_trends(
             date_keys,
             click_daily,
-            [
-                "解析弹幕按钮",
-                "下载 CSV",
-                "下载 TXT",
-                "内置内容分析",
-                "自主内容分析",
-                "内置深度分析",
-                "自主深度分析",
-                "分享报告按钮",
-                "插件 GitHub 链接",
-                "获取 API Key",
-            ],
+            CLICK_TREND_PRIORITY,
         ),
+        "click_uv_trends": _visitor_trends(date_keys, click_uv_daily, CLICK_TREND_PRIORITY),
         "latency": {
             "events": event_count,
             "p50_ms": _percentile(durations, 50),
@@ -1107,19 +1176,7 @@ def _feature_trends(date_keys: list[str], feature_daily: dict[str, Counter[str]]
     for counts in feature_daily.values():
         totals.update(counts)
     keep = [name for name, _ in totals.most_common(9)]
-    priority = [
-        "弹幕解析",
-        "CSV下载",
-        "TXT下载",
-        "内置内容分析",
-        "自主内容分析",
-        "内置深度分析",
-        "自主深度分析",
-        "分享报告保存",
-        "分享报告读取",
-        "字幕上传",
-    ]
-    ordered = [name for name in priority if name in keep]
+    ordered = [name for name in FEATURE_TREND_PRIORITY if name in keep]
     ordered.extend([name for name in keep if name not in ordered])
     return [
         {"name": name, "data": [feature_daily[key].get(name, 0) for key in date_keys]}
@@ -1196,6 +1253,36 @@ def _counter_items(counter: Counter[str], limit: int | None = None) -> list[dict
     return [{"name": name, "value": value} for name, value in counter.most_common(limit)]
 
 
+def _counter_items_with_uv(
+    counter: Counter[str],
+    visitor_sets: dict[str, set[str]],
+    limit: int | None = None,
+    *,
+    uv_as_value: bool = False,
+    count_key: str = "requests",
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for name in set(counter) | set(visitor_sets):
+        count = int(counter.get(name, 0))
+        uv = len(visitor_sets.get(name, set()))
+        row = {
+            "name": name,
+            "value": uv if uv_as_value else count,
+            "uv": uv,
+        }
+        if uv_as_value:
+            row[count_key] = count
+        rows.append(row)
+    rows.sort(
+        key=lambda item: (
+            -int(item.get("value") or 0),
+            -int(item.get(count_key) or item.get("uv") or 0),
+            str(item.get("name") or ""),
+        )
+    )
+    return rows[:limit] if limit is not None else rows
+
+
 def _counter_trends(
     date_keys: list[str],
     daily_counters: dict[str, Counter[str]],
@@ -1210,6 +1297,25 @@ def _counter_trends(
     ordered.extend([name for name in names if name not in ordered])
     return [
         {"name": name, "data": [daily_counters[key].get(name, 0) for key in date_keys]}
+        for name in ordered[:limit]
+    ]
+
+
+def _visitor_trends(
+    date_keys: list[str],
+    daily_visitors: dict[str, dict[str, set[str]]],
+    priority: list[str] | None = None,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    totals: dict[str, set[str]] = defaultdict(set)
+    for values_by_name in daily_visitors.values():
+        for name, values in values_by_name.items():
+            totals[name].update(values)
+    names = sorted(totals, key=lambda name: len(totals[name]), reverse=True)[:limit]
+    ordered = [name for name in (priority or []) if name in totals]
+    ordered.extend([name for name in names if name not in ordered])
+    return [
+        {"name": name, "data": [len(daily_visitors.get(key, {}).get(name, set())) for key in date_keys]}
         for name in ordered[:limit]
     ]
 

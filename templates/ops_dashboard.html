@@ -711,13 +711,13 @@
           <div class="panel-head">
             <div>
               <h3>AI 分析构成</h3>
-              <span>内置与自主模型的内容/深度分析</span>
+              <span>内置与自主模型的调用和 UV</span>
             </div>
           </div>
           <div id="aiAnalysisChart" class="chart small"></div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>AI 分析</th><th class="numeric">调用</th></tr></thead>
+              <thead><tr><th>AI 分析</th><th class="numeric">调用</th><th class="numeric">UV</th></tr></thead>
               <tbody id="aiAnalysisTable"></tbody>
             </table>
           </div>
@@ -731,7 +731,7 @@
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>页面</th><th class="numeric">PV</th></tr></thead>
+              <thead><tr><th>页面</th><th class="numeric">PV</th><th class="numeric">UV</th></tr></thead>
               <tbody id="pageTable"></tbody>
             </table>
           </div>
@@ -743,7 +743,7 @@
           <div class="panel-head">
             <div>
               <h3>浏览器分布</h3>
-              <span>用户代理粗分类</span>
+              <span>按真实用户 UV 粗分类</span>
             </div>
           </div>
           <div id="uaChart" class="chart small"></div>
@@ -757,7 +757,7 @@
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>来源</th><th class="numeric">次数</th></tr></thead>
+              <thead><tr><th>来源</th><th class="numeric">UV</th><th class="numeric">访问</th></tr></thead>
               <tbody id="referrerTable"></tbody>
             </table>
           </div>
@@ -1039,7 +1039,7 @@
         button.classList.toggle('active', button.dataset.behaviorMode === state.behaviorMode);
       });
       const trends = isClick ? (data.click_trends || []) : (data.feature_trends || []);
-      const totals = isClick ? (data.click_actions || []) : trendTotals(trends);
+      const totals = isClick ? (data.click_actions || []) : (data.feature_actions || []);
       const series = trends.map((item) => ({
         name: item.name,
         type: 'bar',
@@ -1059,8 +1059,11 @@
         yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
         series: series.length ? series : [{ name: isClick ? '暂无点击' : '暂无行为', type: 'bar', data: dates.map(() => 0) }]
       });
-      $('#behaviorTableHead').innerHTML = `<tr><th>${isClick ? '按钮/链接' : '行为'}</th><th class="numeric">${isClick ? '点击' : '请求'}</th></tr>`;
-      renderSimpleTable('#behaviorTable', totals, isClick ? '按钮/链接' : '行为', isClick ? '点击' : '请求');
+      $('#behaviorTableHead').innerHTML = `<tr><th>${isClick ? '按钮/链接' : '行为'}</th><th class="numeric">${isClick ? '点击' : '请求'}</th><th class="numeric">UV</th></tr>`;
+      renderMetricTable('#behaviorTable', totals, isClick ? '按钮/链接' : '行为', [
+        { key: 'value', label: isClick ? '点击' : '请求' },
+        { key: 'uv', label: 'UV' }
+      ]);
     }
 
     function renderAiAnalysisChart(data) {
@@ -1106,7 +1109,7 @@
           type: 'pie',
           radius: ['44%', '72%'],
           center: ['50%', '43%'],
-          label: { formatter: '{b}: {c}' },
+          label: { formatter: '{b}: {c} UV' },
           data: (data.top_user_agents || []).map((item) => ({ name: item.name, value: item.value }))
         }]
       });
@@ -1153,24 +1156,21 @@
     }
 
     function renderSimpleTable(selector, rows, firstLabel, valueLabel) {
+      renderMetricTable(selector, rows, firstLabel, [{ key: 'value', label: valueLabel }]);
+    }
+
+    function renderMetricTable(selector, rows, firstLabel, columns) {
       const target = $(selector);
       if (!rows || rows.length === 0) {
-        target.innerHTML = `<tr><td colspan="2"><div class="empty">暂无数据</div></td></tr>`;
+        target.innerHTML = `<tr><td colspan="${columns.length + 1}"><div class="empty">暂无数据</div></td></tr>`;
         return;
       }
       target.innerHTML = rows.map((item) => `
         <tr>
           <td>${escapeHtml(item.name || firstLabel)}</td>
-          <td class="numeric">${formatNumber(item.value || 0)}</td>
+          ${columns.map((column) => `<td class="numeric">${formatNumber(item[column.key] || 0)}</td>`).join('')}
         </tr>
       `).join('');
-    }
-
-    function trendTotals(trends) {
-      return (trends || []).map((item) => ({
-        name: item.name,
-        value: (item.data || []).reduce((sum, value) => sum + Number(value || 0), 0)
-      })).filter((item) => item.value > 0);
     }
 
     function renderBvidPanel(data) {
@@ -1227,10 +1227,19 @@
     }
 
     function renderTables(data) {
-      renderSimpleTable('#pageTable', data.top_pages, '页面', 'PV');
-      renderSimpleTable('#referrerTable', data.top_referrers, '来源', '次数');
+      renderMetricTable('#pageTable', data.top_pages, '页面', [
+        { key: 'value', label: 'PV' },
+        { key: 'uv', label: 'UV' }
+      ]);
+      renderMetricTable('#referrerTable', data.top_referrers, '来源', [
+        { key: 'value', label: 'UV' },
+        { key: 'visits', label: '访问' }
+      ]);
       renderSimpleTable('#regionTable', data.top_regions, '地区', 'UV');
-      renderSimpleTable('#aiAnalysisTable', data.ai_analysis_breakdown || data.ai_mode_details, 'AI 分析', '调用');
+      renderMetricTable('#aiAnalysisTable', data.ai_analysis_breakdown || data.ai_mode_details, 'AI 分析', [
+        { key: 'value', label: '调用' },
+        { key: 'uv', label: 'UV' }
+      ]);
       renderBvidPanel(data);
 
       $('#apiTable').innerHTML = (data.api_endpoints || []).length
@@ -1352,6 +1361,8 @@
         request.label = days === 1 ? '今日' : `${days}天`;
         request.expectedStart = localDate(-(days - 1));
         request.expectedEnd = localDate(0);
+        request.startDate = request.expectedStart;
+        request.endDate = request.expectedEnd;
         params.set('days', days);
       }
       if (state.filterAdminIp && state.adminIp) {
@@ -1436,11 +1447,11 @@
       `).join('');
       $('#periodCompare').innerHTML = '<div class="empty">正在读取当前筛选范围...</div>';
       [
-        ['#behaviorTable', 2],
-        ['#pageTable', 2],
-        ['#referrerTable', 2],
+        ['#behaviorTable', 3],
+        ['#pageTable', 3],
+        ['#referrerTable', 3],
         ['#regionTable', 2],
-        ['#aiAnalysisTable', 2],
+        ['#aiAnalysisTable', 3],
         ['#apiTable', 3],
         ['#jobTable', 4],
         ['#botTable', 2],
