@@ -529,6 +529,10 @@
       pointer-events: none;
     }
 
+    .loading-note {
+      color: var(--muted);
+    }
+
     .error-box {
       display: none;
       margin-top: 14px;
@@ -885,8 +889,15 @@
       behaviorMode: 'server',
       bvidMode: 'all',
       data: null,
-      charts: {}
+      charts: {},
+      requestSeq: 0,
+      abortController: null,
+      activeRequestKey: '',
+      responseCache: new Map(),
+      prefetches: new Map(),
+      prefetchStarted: false
     };
+    const DASHBOARD_CACHE_MS = 2 * 60 * 1000;
     const palette = ['#0098c8', '#138a5b', '#a86f16', '#6955b8', '#bd3930', '#4d6f87', '#20262c', '#7b8791'];
 
     const $ = (selector) => document.querySelector(selector);
@@ -902,6 +913,7 @@
       if (!state.charts[id]) {
         state.charts[id] = echarts.init(element);
       }
+      state.charts[id].hideLoading();
       state.charts[id].setOption(option, true);
     }
 
@@ -1255,7 +1267,7 @@
               <td>${escapeHtml(item.message)}</td>
             </tr>
           `).join('')
-        : '<tr><td colspan="2"><div class="empty">当前范围内没有应用错误</div></td></tr>';
+        : '<tr><td colspan="2"><div class="empty">当前范围内没有访问错误</div></td></tr>';
     }
 
     function renderMeta(data) {
@@ -1289,6 +1301,74 @@
         return { startDate: state.startDate, endDate: state.endDate };
       }
       return { days: state.days };
+    }
+
+    function buildDashboardRequest(selection = currentSelection()) {
+      if (typeof selection === 'number') {
+        selection = { days: selection };
+      }
+      const params = new URLSearchParams();
+      const request = {
+        mode: 'days',
+        days: 30,
+        startDate: '',
+        endDate: '',
+        label: '30天',
+        params,
+        key: '',
+        expectedStart: '',
+        expectedEnd: '',
+        expectedFilter: Boolean(state.filterAdminIp && state.adminIp),
+        expectedAdminIp: state.adminIp
+      };
+      if (selection.preset === 'yesterday') {
+        const yesterday = localDate(-1);
+        request.mode = 'yesterday';
+        request.startDate = yesterday;
+        request.endDate = yesterday;
+        request.label = '昨日';
+        request.expectedStart = yesterday;
+        request.expectedEnd = yesterday;
+        params.set('start', yesterday);
+        params.set('end', yesterday);
+      } else if (selection.startDate || selection.endDate) {
+        let startDate = selection.startDate || $('#startDate').value || localDate(-29);
+        let endDate = selection.endDate || $('#endDate').value || localDate(0);
+        if (startDate > endDate) {
+          [startDate, endDate] = [endDate, startDate];
+        }
+        request.mode = 'custom';
+        request.startDate = startDate;
+        request.endDate = endDate;
+        request.label = `${startDate} 至 ${endDate}`;
+        request.expectedStart = startDate;
+        request.expectedEnd = endDate;
+        params.set('start', startDate);
+        params.set('end', endDate);
+      } else {
+        const days = Number(selection.days || state.days || 30);
+        request.mode = 'days';
+        request.days = days;
+        request.label = days === 1 ? '今日' : `${days}天`;
+        request.expectedStart = localDate(-(days - 1));
+        request.expectedEnd = localDate(0);
+        params.set('days', days);
+      }
+      if (state.filterAdminIp && state.adminIp) {
+        params.set('exclude_ip', state.adminIp);
+      }
+      request.key = params.toString();
+      return request;
+    }
+
+    function applyRequestSelection(request) {
+      state.mode = request.mode;
+      state.days = request.days || state.days;
+      state.startDate = request.startDate || '';
+      state.endDate = request.endDate || '';
+      if (request.startDate) $('#startDate').value = request.startDate;
+      if (request.endDate) $('#endDate').value = request.endDate;
+      updateRangeControls();
     }
 
     function updateRangeControls() {
@@ -1333,55 +1413,173 @@
       state.adminIp = ($('#adminIpInput').value || DEFAULT_ADMIN_IP).trim();
       updateAdminFilterControls();
       saveAdminFilterPrefs();
+      state.responseCache.clear();
+      state.prefetches.clear();
+      state.prefetchStarted = false;
       loadDashboard(currentSelection());
     }
 
-    async function loadDashboard(selection = currentSelection()) {
-      if (typeof selection === 'number') {
-        selection = { days: selection };
-      }
-      const params = new URLSearchParams();
-      if (selection.preset === 'yesterday') {
-        const yesterday = localDate(-1);
-        state.mode = 'yesterday';
-        state.startDate = yesterday;
-        state.endDate = yesterday;
-        params.set('start', yesterday);
-        params.set('end', yesterday);
-        $('#startDate').value = yesterday;
-        $('#endDate').value = yesterday;
-      } else if (selection.startDate || selection.endDate) {
-        state.mode = 'custom';
-        state.startDate = selection.startDate || $('#startDate').value || localDate(-29);
-        state.endDate = selection.endDate || $('#endDate').value || localDate(0);
-        params.set('start', state.startDate);
-        params.set('end', state.endDate);
-        $('#startDate').value = state.startDate;
-        $('#endDate').value = state.endDate;
-      } else {
-        state.mode = 'days';
-        state.days = Number(selection.days || state.days || 30);
-        params.set('days', state.days);
-      }
-      if (state.filterAdminIp && state.adminIp) {
-        params.set('exclude_ip', state.adminIp);
-      }
+    function setDashboardLoading(request) {
+      state.data = null;
       $('#dashboardRoot').classList.add('loading');
       $('#errorBox').style.display = 'none';
-      updateRangeControls();
+      $('#freshnessText').textContent = `正在读取 ${request.label}`;
+      $('#scopeText').textContent = `正在读取 ${request.label}，返回数据与当前筛选匹配后才会更新看板。`;
+      $('#kpiGrid').innerHTML = Array.from({ length: 8 }).map(() => `
+        <div class="panel kpi">
+          <div>
+            <div class="kpi-label loading-note">读取中</div>
+            <div class="kpi-value">--</div>
+          </div>
+          <div class="delta">等待当前筛选结果</div>
+        </div>
+      `).join('');
+      $('#periodCompare').innerHTML = '<div class="empty">正在读取当前筛选范围...</div>';
+      [
+        ['#behaviorTable', 2],
+        ['#pageTable', 2],
+        ['#referrerTable', 2],
+        ['#regionTable', 2],
+        ['#aiAnalysisTable', 2],
+        ['#apiTable', 3],
+        ['#jobTable', 4],
+        ['#botTable', 2],
+        ['#errorTable', 2],
+        ['#bvidTable', state.bvidMode === 'ai' ? 6 : 5]
+      ].forEach(([selector, colspan]) => {
+        const target = $(selector);
+        if (target) target.innerHTML = `<tr><td colspan="${colspan}"><div class="empty">正在读取当前筛选范围...</div></td></tr>`;
+      });
+      Object.values(state.charts).forEach((instance) => {
+        if (instance && instance.showLoading) {
+          instance.showLoading('default', { text: '正在读取当前筛选范围...' });
+        }
+      });
+    }
+
+    function responseMatchesRequest(data, request) {
+      const meta = data.meta || {};
+      if (request.expectedStart && meta.range_start !== request.expectedStart) return false;
+      if (request.expectedEnd && meta.range_end !== request.expectedEnd) return false;
+      if (request.mode === 'days' && Number(meta.days || 0) !== Number(request.days || 0)) return false;
+      const filter = meta.admin_filter || {};
+      const expectedFilter = Boolean(request.expectedFilter);
+      if (Boolean(filter.enabled) !== expectedFilter) return false;
+      if (expectedFilter && !(filter.ips || []).includes(request.expectedAdminIp)) return false;
+      return true;
+    }
+
+    function scheduleDashboardPrefetch() {
+      if (state.prefetchStarted) return;
+      state.prefetchStarted = true;
+      const selections = [1, { preset: 'yesterday' }, 7, 90];
+      selections.forEach((selection, index) => {
+        window.setTimeout(() => prefetchDashboard(selection), 450 + index * 850);
+      });
+    }
+
+    async function prefetchDashboard(selection) {
+      const request = buildDashboardRequest(selection);
+      if (state.responseCache.has(request.key) || state.prefetches.has(request.key)) return;
+      const promise = fetch(`/api/v2/ops-dashboard?${request.key}`, { cache: 'no-store' })
+        .then((response) => response.json().then((payload) => ({ response, payload })))
+        .then(({ response, payload }) => {
+          if (!response.ok || !payload.success) return;
+          if (!responseMatchesRequest(payload.data || {}, request)) return;
+          state.responseCache.set(request.key, { cachedAt: Date.now(), data: payload.data });
+        })
+        .catch(() => {})
+        .finally(() => {
+          state.prefetches.delete(request.key);
+        });
+      state.prefetches.set(request.key, promise);
+      await promise;
+    }
+
+    async function loadDashboard(selection = currentSelection(), options = {}) {
+      const request = buildDashboardRequest(selection);
+      if (state.abortController) {
+        state.abortController.abort();
+      }
+      const requestId = state.requestSeq + 1;
+      state.requestSeq = requestId;
+      state.activeRequestKey = request.key;
+      applyRequestSelection(request);
+      const cached = state.responseCache.get(request.key);
+      if (!options.force && cached && Date.now() - cached.cachedAt < DASHBOARD_CACHE_MS) {
+        state.abortController = null;
+        $('#dashboardRoot').classList.remove('loading');
+        Object.values(state.charts).forEach((instance) => instance && instance.hideLoading && instance.hideLoading());
+        state.data = cached.data;
+        render(cached.data);
+        scheduleDashboardPrefetch();
+        return;
+      }
+      const pendingPrefetch = state.prefetches.get(request.key);
+      if (!options.force && pendingPrefetch) {
+        state.abortController = null;
+        setDashboardLoading(request);
+        try {
+          await pendingPrefetch;
+          if (requestId !== state.requestSeq || request.key !== state.activeRequestKey) {
+            return;
+          }
+          const ready = state.responseCache.get(request.key);
+          if (!ready) {
+            throw new Error('当前筛选仍在计算，请稍后刷新');
+          }
+          state.data = ready.data;
+          render(ready.data);
+          scheduleDashboardPrefetch();
+        } catch (error) {
+          if (requestId === state.requestSeq && request.key === state.activeRequestKey) {
+            $('#errorBox').textContent = error.message || String(error);
+            $('#errorBox').style.display = 'block';
+          }
+        } finally {
+          if (requestId === state.requestSeq && request.key === state.activeRequestKey) {
+            $('#dashboardRoot').classList.remove('loading');
+            Object.values(state.charts).forEach((instance) => instance && instance.hideLoading && instance.hideLoading());
+          }
+        }
+        return;
+      }
+      const controller = new AbortController();
+      state.abortController = controller;
+      setDashboardLoading(request);
       try {
-        const response = await fetch(`/api/v2/ops-dashboard?${params.toString()}`, { cache: 'no-store' });
+        const response = await fetch(`/api/v2/ops-dashboard?${request.key}`, { cache: 'no-store', signal: controller.signal });
         const payload = await response.json();
+        if (requestId !== state.requestSeq || request.key !== state.activeRequestKey) {
+          return;
+        }
         if (!response.ok || !payload.success) {
           throw new Error((payload.error && payload.error.message) || '看板数据读取失败');
         }
+        if (!responseMatchesRequest(payload.data || {}, request)) {
+          throw new Error('接口返回范围与当前筛选不一致，已拒绝渲染这批数据');
+        }
         state.data = payload.data;
+        state.responseCache.set(request.key, { cachedAt: Date.now(), data: payload.data });
         render(payload.data);
+        scheduleDashboardPrefetch();
       } catch (error) {
+        if (error && error.name === 'AbortError') {
+          return;
+        }
+        if (requestId !== state.requestSeq || request.key !== state.activeRequestKey) {
+          return;
+        }
         $('#errorBox').textContent = error.message || String(error);
         $('#errorBox').style.display = 'block';
       } finally {
-        $('#dashboardRoot').classList.remove('loading');
+        if (requestId === state.requestSeq && request.key === state.activeRequestKey) {
+          $('#dashboardRoot').classList.remove('loading');
+          if (state.abortController === controller) {
+            state.abortController = null;
+          }
+          Object.values(state.charts).forEach((instance) => instance && instance.hideLoading && instance.hideLoading());
+        }
       }
     }
 
@@ -1469,7 +1667,7 @@
         applyAdminFilter();
       }
     });
-    $('#refreshButton').addEventListener('click', () => loadDashboard(currentSelection()));
+    $('#refreshButton').addEventListener('click', () => loadDashboard(currentSelection(), { force: true }));
     window.addEventListener('resize', debounce(() => {
       Object.values(state.charts).forEach((instance) => instance && instance.resize());
     }, 160));

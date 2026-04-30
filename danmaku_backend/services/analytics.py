@@ -132,6 +132,7 @@ BOT_SOURCE_RULES = (
 )
 INTERNAL_HOSTS = {"danmu.liu-qi.cn", "dm.liu-qi.cn"}
 ANALYTICS_CACHE_SECONDS = 900
+VIDEO_META_FETCH_LIMIT = 6
 MAX_ACCESS_LOG_BYTES = 80 * 1024 * 1024
 OPS_VIDEO_META_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_video_meta.json")
 OPS_IP_REGION_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_ip_region_cache.json")
@@ -1315,8 +1316,9 @@ def _video_meta_for_bvids(bvids: list[str], seed_meta: dict[str, dict[str, str]]
         if not item["title"] or not item["author"]:
             missing.append(bvid)
 
+    missing = missing[:VIDEO_META_FETCH_LIMIT]
     if missing:
-        with ThreadPoolExecutor(max_workers=min(4, len(missing))) as executor:
+        with ThreadPoolExecutor(max_workers=min(6, len(missing))) as executor:
             futures = {executor.submit(_fetch_video_meta, bvid): bvid for bvid in missing}
             for future in as_completed(futures):
                 bvid = futures[future]
@@ -1345,7 +1347,7 @@ def _fetch_video_meta(bvid: str) -> dict[str, str]:
     response = requests.get(
         f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}",
         headers=BILIBILI_HEADERS,
-        timeout=(2, 6),
+        timeout=(0.8, 2.2),
     )
     response.raise_for_status()
     payload = response.json()
