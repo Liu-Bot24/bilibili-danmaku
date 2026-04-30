@@ -167,11 +167,11 @@ FEATURE_LABELS = {
     "custom_deep": "自主深度分析",
     "report_save": "分享报告保存",
     "report_view": "分享报告读取",
-    "job_poll": "任务查询",
-    "video_cover": "封面代理",
+    "job_poll": "AI任务状态接口",
+    "video_cover": "视频封面接口",
     "api_other": "其他 API",
     "ops_event": "运营埋点",
-    "not_found": "404/异常访问",
+    "not_found": "异常访问",
     "seo_file": "SEO文件",
     "static_asset": "静态资源",
     "other": "其他",
@@ -203,6 +203,75 @@ AI_MODE_LABELS = {
     "deep_analysis": ("内置 AI", "内置深度分析", "builtin_ai_calls"),
     "custom_content": ("自主模型", "自主内容分析", "custom_ai_calls"),
     "custom_deep": ("自主模型", "自主深度分析", "custom_ai_calls"),
+}
+OPERATING_FEATURE_CATEGORIES = {
+    "page_home",
+    "page_result",
+    "page_faq",
+    "page_plugin",
+    "download_generate",
+    "download_csv",
+    "download_txt",
+    "plugin_download",
+    "subtitle_upload",
+    "content_analysis",
+    "deep_analysis",
+    "custom_content",
+    "custom_deep",
+    "report_save",
+    "report_view",
+}
+IP_REGION_LABEL_BLACKLIST = {"未知地区", "待归类地区", "其他地区"}
+COUNTRY_LABELS = {
+    "CN": "中国",
+    "US": "美国",
+    "JP": "日本",
+    "KR": "韩国",
+    "SG": "新加坡",
+    "HK": "中国香港",
+    "TW": "中国台湾",
+}
+REGION_LABELS = {
+    "Beijing": "北京",
+    "Shanghai": "上海",
+    "Tianjin": "天津",
+    "Chongqing": "重庆",
+    "Guangdong": "广东",
+    "Zhejiang": "浙江",
+    "Jiangsu": "江苏",
+    "Shandong": "山东",
+    "Henan": "河南",
+    "Sichuan": "四川",
+    "Hubei": "湖北",
+    "Hunan": "湖南",
+    "Fujian": "福建",
+    "Shaanxi": "陕西",
+    "Shanxi": "山西",
+    "Hebei": "河北",
+    "Liaoning": "辽宁",
+    "Jilin": "吉林",
+    "Heilongjiang": "黑龙江",
+    "Anhui": "安徽",
+    "Jiangxi": "江西",
+    "Guangxi": "广西",
+    "Yunnan": "云南",
+    "Guizhou": "贵州",
+    "Gansu": "甘肃",
+    "Inner Mongolia": "内蒙古",
+    "Xinjiang": "新疆",
+    "Ningxia": "宁夏",
+    "Qinghai": "青海",
+    "Hainan": "海南",
+    "Hangzhou": "杭州",
+    "Chengdu": "成都",
+    "Luancheng": "石家庄栾城",
+    "Guangzhou": "广州",
+    "Shenzhen": "深圳",
+    "Nanjing": "南京",
+    "Suzhou": "苏州",
+    "Wuhan": "武汉",
+    "Xi'an": "西安",
+    "Xian": "西安",
 }
 
 PAGE_CATEGORIES = {"page_home", "page_result", "page_faq", "page_plugin"}
@@ -311,10 +380,18 @@ def record_request_event(flask_request, response, duration_ms: float | None = No
         )
 
 
-def build_ops_dashboard(days: int = 30, start_date: str | None = None, end_date: str | None = None) -> dict[str, Any]:
+def build_ops_dashboard(
+    days: int = 30,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    exclude_ips: str | list[str] | None = None,
+) -> dict[str, Any]:
     date_keys = _date_keys_for_range(start_date, end_date, days)
     days = len(date_keys)
-    cache_key = f"ops:{date_keys[0]}:{date_keys[-1]}"
+    excluded_ips = _normalize_excluded_ips(exclude_ips)
+    excluded_ip_hashes = {_ip_hash(ip_value) for ip_value in excluded_ips}
+    filter_key = ",".join(sorted(excluded_ip_hashes)) or "none"
+    cache_key = f"ops:{date_keys[0]}:{date_keys[-1]}:exclude:{filter_key}"
     now = time.time()
     with _dashboard_cache_lock:
         cached = _dashboard_cache.get(cache_key)
@@ -326,11 +403,12 @@ def build_ops_dashboard(days: int = 30, start_date: str | None = None, end_date:
             _dashboard_cache[cache_key] = (now, disk_cached)
         return disk_cached
 
-    access = _access_log_metrics(date_keys)
-    events = _analytics_event_metrics(date_keys)
-    artifacts = _artifact_metrics(date_keys)
-    jobs = _job_metrics(date_keys)
-    reports = _report_metrics(date_keys)
+    access = _access_log_metrics(date_keys, excluded_ips)
+    events = _analytics_event_metrics(date_keys, excluded_ip_hashes)
+    excluded_analysis_ids = events["excluded_analysis_ids"]
+    artifacts = _artifact_metrics(date_keys, excluded_analysis_ids)
+    jobs = _job_metrics(date_keys, excluded_analysis_ids)
+    reports = _report_metrics(date_keys, excluded_analysis_ids)
     app_errors = _app_log_errors(date_keys)
 
     daily = _merge_daily(
@@ -356,8 +434,13 @@ def build_ops_dashboard(days: int = 30, start_date: str | None = None, end_date:
             ],
             "access_log": _file_freshness(ACCESS_LOG_FILE),
             "app_log": _file_freshness(LOG_FILE),
+            "admin_filter": {
+                "enabled": bool(excluded_ips),
+                "ips": sorted(excluded_ips),
+            },
             "notes": [
                 "PV/UV 默认排除明显爬虫与命令行探测流量。",
+                "可按管理员 IP 过滤访问日志、按钮埋点以及可关联的解析/任务/报告数据。",
                 "地区来源基于聚合网段做近似归类，不返回完整原始 IP。",
                 "按钮点击从前端埋点上线后开始累计。",
             ],
@@ -370,6 +453,12 @@ def build_ops_dashboard(days: int = 30, start_date: str | None = None, end_date:
         "ai_mode_breakdown": _counter_items(access["ai_modes"]),
         "ai_mode_details": _counter_items(access["ai_mode_details"]),
         "ai_mode_trends": _counter_trends(date_keys, access["ai_mode_daily"], ["内置 AI", "自主模型"]),
+        "ai_analysis_breakdown": _counter_items(access["ai_mode_details"]),
+        "ai_analysis_trends": _counter_trends(
+            date_keys,
+            access["ai_detail_daily"],
+            ["内置内容分析", "自主内容分析", "内置深度分析", "自主深度分析"],
+        ),
         "download_breakdown": _counter_items(access["download_breakdown"]),
         "status_codes": _counter_items(access["status_codes"]),
         "api_endpoints": _api_endpoint_items(access["api_endpoints"], access["api_endpoint_errors"]),
@@ -470,7 +559,8 @@ def _ensure_analytics_db() -> None:
             _analytics_db_ready = True
 
 
-def _access_log_metrics(date_keys: list[str]) -> dict[str, Any]:
+def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = None) -> dict[str, Any]:
+    excluded_ips = excluded_ips or set()
     daily = {key: _empty_daily(key) for key in date_keys}
     date_set = set(date_keys)
     visitors: dict[str, set[str]] = defaultdict(set)
@@ -487,6 +577,7 @@ def _access_log_metrics(date_keys: list[str]) -> dict[str, Any]:
     ai_modes: Counter[str] = Counter()
     ai_mode_details: Counter[str] = Counter()
     ai_mode_daily: dict[str, Counter[str]] = defaultdict(Counter)
+    ai_detail_daily: dict[str, Counter[str]] = defaultdict(Counter)
     bot_families: Counter[str] = Counter()
     bot_sources: Counter[str] = Counter()
     bot_paths: Counter[str] = Counter()
@@ -497,6 +588,8 @@ def _access_log_metrics(date_keys: list[str]) -> dict[str, Any]:
         for row in _iter_access_log(path):
             date_key = row["date"]
             if date_key not in date_set:
+                continue
+            if row["ip"] in excluded_ips:
                 continue
             category, label = classify_request(row["method"], row["path"])
             day = daily[date_key]
@@ -528,7 +621,12 @@ def _access_log_metrics(date_keys: list[str]) -> dict[str, Any]:
                     day["plugin_downloads"] += 1
             is_operator_or_asset = category in SKIP_ANALYTICS_CATEGORIES or category == "seo_file"
             if not is_bot and not is_operator_or_asset:
-                feature_daily[date_key][label] += 1
+                if category in OPERATING_FEATURE_CATEGORIES and status < 500:
+                    if category in AI_MODE_LABELS:
+                        _, detail, _ = AI_MODE_LABELS[category]
+                        feature_daily[date_key][detail] += 1
+                    else:
+                        feature_daily[date_key][label] += 1
                 if category in AI_MODE_LABELS and status < 500:
                     mode, detail, field = AI_MODE_LABELS[category]
                     day["ai_calls"] += 1
@@ -536,6 +634,7 @@ def _access_log_metrics(date_keys: list[str]) -> dict[str, Any]:
                     ai_modes[mode] += 1
                     ai_mode_details[detail] += 1
                     ai_mode_daily[date_key][mode] += 1
+                    ai_detail_daily[date_key][detail] += 1
                 if category in PAGE_CATEGORIES and row["method"] == "GET" and status < 500:
                     day["pv"] += 1
                     visitors[date_key].add(_ip_hash(row["ip"]))
@@ -568,6 +667,7 @@ def _access_log_metrics(date_keys: list[str]) -> dict[str, Any]:
         "ai_modes": ai_modes,
         "ai_mode_details": ai_mode_details,
         "ai_mode_daily": ai_mode_daily,
+        "ai_detail_daily": ai_detail_daily,
         "top_regions": _region_items_from_segments(top_ip_segments, 12),
         "bot_traffic": {
             "families": _counter_items(bot_families, 8),
@@ -583,8 +683,9 @@ def _access_log_metrics(date_keys: list[str]) -> dict[str, Any]:
     }
 
 
-def _analytics_event_metrics(date_keys: list[str]) -> dict[str, Any]:
+def _analytics_event_metrics(date_keys: list[str], excluded_ip_hashes: set[str] | None = None) -> dict[str, Any]:
     _ensure_analytics_db()
+    excluded_ip_hashes = excluded_ip_hashes or set()
     date_set = set(date_keys)
     daily = {key: {"button_clicks": 0} for key in date_keys}
     durations: list[float] = []
@@ -592,10 +693,11 @@ def _analytics_event_metrics(date_keys: list[str]) -> dict[str, Any]:
     clicks: Counter[str] = Counter()
     click_daily: dict[str, Counter[str]] = defaultdict(Counter)
     event_count = 0
+    excluded_analysis_ids: set[str] = set()
     with connect_state_db(STATE_DB_PATH) as conn:
         rows = conn.execute(
             """
-            SELECT date, category, status, duration_ms
+            SELECT date, category, status, duration_ms, ip_hash, analysis_id
             FROM analytics_events
             WHERE date >= ? AND date <= ?
               AND is_bot = 0
@@ -604,6 +706,11 @@ def _analytics_event_metrics(date_keys: list[str]) -> dict[str, Any]:
         ).fetchall()
     for row in rows:
         if row["date"] not in date_set:
+            continue
+        if row["ip_hash"] in excluded_ip_hashes:
+            analysis_id = str(row["analysis_id"] or "").strip()
+            if re.fullmatch(r"[0-9a-f]{32}", analysis_id):
+                excluded_analysis_ids.add(analysis_id)
             continue
         category = str(row["category"] or "")
         if category.startswith("click_"):
@@ -651,12 +758,14 @@ def _analytics_event_metrics(date_keys: list[str]) -> dict[str, Any]:
             "p50_ms": _percentile(durations, 50),
             "p95_ms": _percentile(durations, 95),
             "by_category": by_category,
-        }
+        },
+        "excluded_analysis_ids": excluded_analysis_ids,
     }
 
 
-def _artifact_metrics(date_keys: list[str]) -> dict[str, Any]:
+def _artifact_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | None = None) -> dict[str, Any]:
     _ensure_analytics_db()
+    excluded_analysis_ids = excluded_analysis_ids or set()
     date_set = set(date_keys)
     daily = {key: {"artifact_success": 0, "danmaku_lines": 0, "unique_bvids": 0, "subtitle_attached": 0} for key in date_keys}
     bvids_by_date: dict[str, set[str]] = defaultdict(set)
@@ -667,11 +776,13 @@ def _artifact_metrics(date_keys: list[str]) -> dict[str, Any]:
     with connect_state_db(STATE_DB_PATH) as conn:
         rows = conn.execute(
             """
-            SELECT bvid, count, created_at, subtitle_filename
+            SELECT analysis_id, bvid, count, created_at, subtitle_filename
             FROM artifact_records
             """
         ).fetchall()
     for row in rows:
+        if str(row["analysis_id"] or "") in excluded_analysis_ids:
+            continue
         total_records += 1
         count = int(row["count"] or 0)
         total_danmaku += count
@@ -703,40 +814,62 @@ def _artifact_metrics(date_keys: list[str]) -> dict[str, Any]:
     }
 
 
-def _job_metrics(date_keys: list[str]) -> dict[str, Any]:
+def _job_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | None = None) -> dict[str, Any]:
     _ensure_analytics_db()
+    excluded_analysis_ids = excluded_analysis_ids or set()
     date_set = set(date_keys)
     daily = {key: {"analysis_jobs": 0, "job_succeeded": 0, "job_failed": 0} for key in date_keys}
     by_kind_status: Counter[str] = Counter()
+    by_model_status: Counter[tuple[str, str, str]] = Counter()
     active = {"queued": 0, "running": 0}
     durations: list[float] = []
     trends: dict[str, Counter[str]] = defaultdict(Counter)
     with connect_state_db(STATE_DB_PATH) as conn:
         rows = conn.execute(
             """
-            SELECT kind, status, created_at, started_at, finished_at
+            SELECT job_id, kind, status, payload_json, created_at, started_at, finished_at
             FROM jobs
             """
         ).fetchall()
+        event_rows = conn.execute(
+            """
+            SELECT e.job_id, e.type, e.message
+            FROM job_events e
+            JOIN jobs j ON j.job_id = e.job_id
+            WHERE j.created_at >= ? AND j.created_at <= ?
+            ORDER BY e.id ASC
+            """,
+            (f"{date_keys[0]}T00:00:00", f"{date_keys[-1]}T23:59:59"),
+        ).fetchall()
+    events_by_job: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for event in event_rows:
+        events_by_job[str(event["job_id"])].append(
+            {"type": str(event["type"] or ""), "message": str(event["message"] or "")}
+        )
     for row in rows:
+        payload = _json_object(row["payload_json"])
+        if str(payload.get("analysis_id") or "") in excluded_analysis_ids:
+            continue
         kind = str(row["kind"] or "unknown")
         status = str(row["status"] or "unknown")
-        by_kind_status[f"{kind}:{status}"] += 1
         if status in active:
             active[status] += 1
         date_key = _date_from_iso(row["created_at"])
         label = f"{_job_kind_label(kind)} / {_job_status_label(status)}"
         if date_key in date_set:
+            by_kind_status[f"{kind}:{status}"] += 1
+            model_label, model_outcome = _job_model_outcome(status, events_by_job.get(str(row["job_id"])) or [])
+            by_model_status[(_job_kind_label(kind), model_label, model_outcome)] += 1
             daily[date_key]["analysis_jobs"] += 1
             trends[date_key][label] += 1
             if status == "succeeded":
                 daily[date_key]["job_succeeded"] += 1
             if status == "failed":
                 daily[date_key]["job_failed"] += 1
-        started = _parse_iso(row["started_at"])
-        finished = _parse_iso(row["finished_at"])
-        if started and finished and finished >= started:
-            durations.append((finished - started).total_seconds())
+            started = _parse_iso(row["started_at"])
+            finished = _parse_iso(row["finished_at"])
+            if started and finished and finished >= started:
+                durations.append((finished - started).total_seconds())
     trend_names = sorted({name for counts in trends.values() for name in counts})
     return {
         "daily": daily,
@@ -750,6 +883,18 @@ def _job_metrics(date_keys: list[str]) -> dict[str, Any]:
                 }
                 for key, value in sorted(by_kind_status.items())
             ],
+            "model_status": [
+                {
+                    "kind": kind,
+                    "model": model,
+                    "status": status,
+                    "count": count,
+                }
+                for (kind, model, status), count in sorted(
+                    by_model_status.items(),
+                    key=lambda item: (item[0][0], item[0][2], item[0][1]),
+                )
+            ],
             "duration_seconds": {
                 "p50": _percentile(durations, 50),
                 "p95": _percentile(durations, 95),
@@ -762,7 +907,8 @@ def _job_metrics(date_keys: list[str]) -> dict[str, Any]:
     }
 
 
-def _report_metrics(date_keys: list[str]) -> dict[str, Any]:
+def _report_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | None = None) -> dict[str, Any]:
+    excluded_analysis_ids = excluded_analysis_ids or set()
     date_set = set(date_keys)
     daily = {key: {"reports": 0} for key in date_keys}
     top_bvids: Counter[str] = Counter()
@@ -774,6 +920,8 @@ def _report_metrics(date_keys: list[str]) -> dict[str, Any]:
             continue
         report = _read_json(path)
         if not report:
+            continue
+        if str(report.get("analysis_id") or "") in excluded_analysis_ids:
             continue
         active_reports += 1
         bvid = str(report.get("bvid") or "")
@@ -911,7 +1059,21 @@ def _feature_trends(date_keys: list[str], feature_daily: dict[str, Counter[str]]
     for counts in feature_daily.values():
         totals.update(counts)
     keep = [name for name, _ in totals.most_common(9)]
-    priority = ["首页", "结果页", "弹幕解析", "CSV下载", "TXT下载", "弹幕内容分析", "字幕深度分析", "插件页", "插件包下载"]
+    priority = [
+        "首页",
+        "结果页",
+        "弹幕解析",
+        "CSV下载",
+        "TXT下载",
+        "内置内容分析",
+        "自主内容分析",
+        "内置深度分析",
+        "自主深度分析",
+        "分享报告保存",
+        "分享报告读取",
+        "插件页",
+        "插件包下载",
+    ]
     ordered = [name for name in priority if name in keep]
     ordered.extend([name for name in keep if name not in ordered])
     return [
@@ -942,6 +1104,8 @@ def _api_endpoint_items(counts: Counter[str], errors: Counter[str]) -> list[dict
     rows = []
     for name, value in counts.most_common(12):
         error_count = errors.get(name, 0)
+        if error_count <= 0:
+            continue
         rows.append(
             {
                 "name": name,
@@ -980,6 +1144,85 @@ def _click_event_label(category: str) -> str:
     if name.startswith("click_"):
         name = name[6:]
     return CLICK_EVENT_LABELS.get(name, name or "未知按钮")
+
+
+def _normalize_excluded_ips(value: str | list[str] | None) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, str):
+        raw_items = re.split(r"[\s,;，；]+", value)
+    else:
+        raw_items = []
+        for item in value:
+            raw_items.extend(re.split(r"[\s,;，；]+", str(item or "")))
+    result: set[str] = set()
+    for item in raw_items:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        try:
+            result.add(str(ipaddress.ip_address(text)))
+        except ValueError:
+            continue
+    return result
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    try:
+        data = json.loads(value or "{}")
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _job_model_outcome(status: str, events: list[dict[str, str]]) -> tuple[str, str]:
+    status = str(status or "unknown")
+    messages = [str(event.get("message") or "") for event in events]
+    attempts: list[str] = []
+    successes: list[str] = []
+    failures: list[str] = []
+    had_fallback = False
+    for message in messages:
+        if "切换备用通道" in message or "备用通道" in message or "fallback" in message.lower():
+            had_fallback = True
+        model = _extract_model_label(message)
+        if not model:
+            continue
+        if model not in attempts and ("正在调用" in message or "调用" in message):
+            attempts.append(model)
+        if "成功" in message or "已返回结果" in message:
+            successes.append(model)
+        if "失败" in message or "错误" in message or "超时" in message:
+            failures.append(model)
+            had_fallback = True
+    model_label = successes[-1] if successes else (attempts[-1] if attempts else (failures[-1] if failures else "未记录模型"))
+    if len(attempts) > 1 and successes:
+        model_label = f"{attempts[0]} → {successes[-1]}"
+        had_fallback = True
+    elif len(attempts) > 1 and not successes:
+        model_label = " → ".join(attempts[-3:])
+        had_fallback = True
+
+    if status == "succeeded":
+        return model_label, "兜底后成功" if had_fallback else "直接成功"
+    if status == "failed":
+        return model_label, "兜底后仍失败" if had_fallback else "失败"
+    if status == "running":
+        return model_label, "运行中"
+    if status == "queued":
+        return model_label, "排队中"
+    return model_label, _job_status_label(status)
+
+
+def _extract_model_label(message: str) -> str:
+    text = str(message or "")
+    match = re.search(r"文本分析服务(?:调用)?(?:成功|失败)?[:：]\s*([^/\s]+)\s*/\s*([^\s，,）)]+)", text)
+    if match:
+        return f"{match.group(1)} / {match.group(2)}"
+    match = re.search(r"模型[:：]\s*([^\s，,）)]+)", text)
+    if match:
+        return match.group(1)
+    return ""
 
 
 def _video_meta_for_bvids(bvids: list[str], seed_meta: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
@@ -1286,7 +1529,11 @@ def _region_items_from_segments(segments: Counter[str], limit: int = 12) -> list
     missing = [
         segment
         for segment, _ in top_segments[:16]
-        if segment not in cache and _public_representative_ip(segment)
+        if (
+            segment not in cache
+            or _is_placeholder_region((cache.get(segment) or {}).get("label"))
+        )
+        and _public_representative_ip(segment)
     ][:8]
     changed = False
     if missing:
@@ -1295,15 +1542,18 @@ def _region_items_from_segments(segments: Counter[str], limit: int = 12) -> list
             for future in as_completed(futures):
                 segment = futures[future]
                 try:
-                    label = future.result() or "待归类地区"
+                    label = future.result()
                 except Exception:
-                    label = "待归类地区"
-                cache[segment] = {"label": label, "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
-                changed = True
+                    label = ""
+                if label and not _is_placeholder_region(label):
+                    cache[segment] = {"label": label, "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
+                    changed = True
     region_counts: Counter[str] = Counter()
     for segment, count in top_segments:
         label, did_fetch = _region_label_for_segment(segment, cache, False)
         changed = changed or did_fetch
+        if not label or _is_placeholder_region(label):
+            continue
         region_counts[label] += count
     if changed:
         _write_ip_region_cache(cache)
@@ -1313,28 +1563,28 @@ def _region_items_from_segments(segments: Counter[str], limit: int = 12) -> list
 def _region_label_for_segment(segment: str, cache: dict[str, dict[str, Any]], can_fetch: bool) -> tuple[str, bool]:
     segment = str(segment or "").strip()
     if not segment or segment == "unknown":
-        return "未知地区", False
+        return "", False
     cached = cache.get(segment)
-    if isinstance(cached, dict) and cached.get("label"):
+    if isinstance(cached, dict) and cached.get("label") and not _is_placeholder_region(cached.get("label")):
         return str(cached["label"]), False
     ip_value = _representative_ip(segment)
     if not ip_value:
-        label = "未知地区"
-        cache[segment] = {"label": label, "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
-        return label, True
+        return "", False
     try:
         ip = ipaddress.ip_address(ip_value)
     except ValueError:
-        return "未知地区", False
+        return "", False
     if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
         label = "内网/保留地址"
         cache[segment] = {"label": label, "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
         return label, True
     if not can_fetch:
-        return "待归类地区", False
-    label = _fetch_ip_region(ip_value) or "未知地区"
-    cache[segment] = {"label": label, "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
-    return label, True
+        return "", False
+    label = _fetch_ip_region(ip_value)
+    if label and not _is_placeholder_region(label):
+        cache[segment] = {"label": label, "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
+        return label, True
+    return "", False
 
 
 def _representative_ip(segment: str) -> str:
@@ -1365,24 +1615,69 @@ def _public_representative_ip(segment: str) -> str:
 
 
 def _fetch_ip_region(ip_value: str) -> str:
+    for fetcher in (_fetch_ipapi_region, _fetch_ipinfo_region):
+        label = fetcher(ip_value)
+        if label and not _is_placeholder_region(label):
+            return label
+    return ""
+
+
+def _fetch_ipapi_region(ip_value: str) -> str:
     try:
         response = requests.get(
-            f"http://ip-api.com/json/{ip_value}",
-            params={"lang": "zh-CN", "fields": "status,country,regionName,city"},
-            timeout=(0.3, 0.8),
+            f"https://ipapi.co/{ip_value}/json/",
+            timeout=(1, 3),
         )
         response.raise_for_status()
         payload = response.json()
     except Exception:
         return ""
-    if payload.get("status") != "success":
+    if payload.get("error"):
         return ""
+    return _format_region_label(
+        payload.get("country_code"),
+        payload.get("country_name"),
+        payload.get("region"),
+        payload.get("city"),
+    )
+
+
+def _fetch_ipinfo_region(ip_value: str) -> str:
+    try:
+        response = requests.get(f"https://ipinfo.io/{ip_value}/json", timeout=(1, 3))
+        response.raise_for_status()
+        payload = response.json()
+    except Exception:
+        return ""
+    return _format_region_label(
+        payload.get("country"),
+        payload.get("country"),
+        payload.get("region"),
+        payload.get("city"),
+    )
+
+
+def _format_region_label(country_code: Any, country_name: Any, region_name: Any, city_name: Any) -> str:
+    code = str(country_code or "").strip().upper()
+    country = COUNTRY_LABELS.get(code) or str(country_name or "").strip()
+    region = _friendly_region_name(region_name)
+    city = _friendly_region_name(city_name)
     parts: list[str] = []
-    for key in ("country", "regionName", "city"):
-        value = str(payload.get(key) or "").strip()
-        if value and value not in parts:
-            parts.append(value)
+    for value in (country, region, city):
+        text = str(value or "").strip()
+        if text and text not in parts:
+            parts.append(text)
     return " / ".join(parts[:3])
+
+
+def _friendly_region_name(value: Any) -> str:
+    text = str(value or "").strip()
+    return REGION_LABELS.get(text, text)
+
+
+def _is_placeholder_region(value: Any) -> bool:
+    text = str(value or "").strip()
+    return not text or text in IP_REGION_LABEL_BLACKLIST
 
 
 def _read_ip_region_cache() -> dict[str, dict[str, Any]]:
@@ -1390,7 +1685,13 @@ def _read_ip_region_cache() -> dict[str, dict[str, Any]]:
         raw = json.loads(OPS_IP_REGION_CACHE_FILE.read_text(encoding="utf-8"))
     except Exception:
         return {}
-    return raw if isinstance(raw, dict) else {}
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        str(segment): value
+        for segment, value in raw.items()
+        if isinstance(value, dict) and not _is_placeholder_region(value.get("label"))
+    }
 
 
 def _write_ip_region_cache(cache: dict[str, dict[str, Any]]) -> None:

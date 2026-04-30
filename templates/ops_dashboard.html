@@ -109,7 +109,8 @@
     }
 
     .rangebar,
-    .date-range {
+    .date-range,
+    .admin-filter {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -152,6 +153,57 @@
     .date-range span {
       color: var(--muted);
       font-size: 12px;
+    }
+
+    .admin-filter {
+      padding: 4px 6px 4px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .admin-filter label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--ink);
+      font-size: 12px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .admin-filter input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      accent-color: var(--accent);
+    }
+
+    .admin-filter input[type="text"] {
+      width: 136px;
+      min-height: 28px;
+      border: 0;
+      border-left: 1px solid var(--line-soft);
+      padding: 0 8px;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .admin-filter button {
+      min-height: 28px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fbfcfd;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .admin-filter button:hover {
+      border-color: rgba(0, 152, 200, 0.45);
+      color: var(--accent);
     }
 
     .freshness {
@@ -540,6 +592,14 @@
           <input type="date" id="endDate" aria-label="结束日期">
           <button class="date-apply" type="button" id="applyDateButton">应用</button>
         </div>
+        <div class="admin-filter" aria-label="过滤管理员IP">
+          <label for="adminIpEnabled">
+            <input type="checkbox" id="adminIpEnabled">
+            过滤管理员IP
+          </label>
+          <input type="text" id="adminIpInput" inputmode="decimal" aria-label="管理员 IP">
+          <button type="button" id="adminIpApply">应用</button>
+        </div>
       </div>
       <div class="freshness">
         <span id="freshnessText">正在读取数据</span>
@@ -552,7 +612,7 @@
         <div class="section-head">
           <div>
             <h1>今日概览</h1>
-            <p id="scopeText">PV/UV 已排除明显爬虫；按钮点击、AI 模式和分享行为按运营口径汇总。</p>
+            <p id="scopeText">PV/UV 已排除明显爬虫；按钮点击、AI 分析和分享行为按运营口径汇总。</p>
           </div>
         </div>
         <div class="grid kpi-grid" id="kpiGrid"></div>
@@ -589,6 +649,12 @@
             </div>
           </div>
           <div id="featureChart" class="chart"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>AI 分析</th><th class="numeric">调用</th></tr></thead>
+              <tbody id="aiAnalysisTable"></tbody>
+            </table>
+          </div>
         </div>
         <div class="panel">
           <div class="panel-head">
@@ -611,15 +677,14 @@
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>AI 模式对比</h3>
-              <span>内置 AI 与自主模型材料准备调用</span>
+              <h3>页面入口</h3>
+              <span>主要页面访问</span>
             </div>
           </div>
-          <div id="aiModeChart" class="chart small"></div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>分析类型</th><th class="numeric">调用</th></tr></thead>
-              <tbody id="aiModeTable"></tbody>
+              <thead><tr><th>页面</th><th class="numeric">PV</th></tr></thead>
+              <tbody id="pageTable"></tbody>
             </table>
           </div>
         </div>
@@ -634,21 +699,7 @@
         </div>
       </section>
 
-      <section class="section grid three-grid">
-        <div class="panel">
-          <div class="panel-head">
-            <div>
-              <h3>页面入口</h3>
-              <span>主要页面访问</span>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>页面</th><th class="numeric">PV</th></tr></thead>
-              <tbody id="pageTable"></tbody>
-            </table>
-          </div>
-        </div>
+      <section class="section grid two-grid">
         <div class="panel">
           <div class="panel-head">
             <div>
@@ -667,7 +718,7 @@
           <div class="panel-head">
             <div>
               <h3>地区分布</h3>
-              <span>按聚合网段近似归类</span>
+              <span>按访问 IP 归属近似归类</span>
             </div>
           </div>
           <div class="table-wrap">
@@ -728,28 +779,28 @@
           <div id="statusChart" class="chart small"></div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>接口</th><th class="numeric">调用</th><th class="numeric">错误率</th></tr></thead>
+              <thead><tr><th>错误接口</th><th class="numeric">调用</th><th class="numeric">错误率</th></tr></thead>
               <tbody id="apiTable"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>AI 任务健康</h3>
+              <span>模型、通道、兜底结果与失败状态</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>任务</th><th>模型/通道</th><th>结果</th><th class="numeric">数量</th></tr></thead>
+              <tbody id="jobTable"></tbody>
             </table>
           </div>
         </div>
       </section>
 
-      <section class="section grid two-grid">
-        <div class="panel">
-          <div class="panel-head">
-            <div>
-              <h3>AI 任务健康</h3>
-              <span>队列、运行、成功与失败</span>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>任务</th><th>状态</th><th class="numeric">数量</th></tr></thead>
-              <tbody id="jobTable"></tbody>
-            </table>
-          </div>
-        </div>
+      <section class="section">
         <div class="panel">
           <div class="panel-head">
             <div>
@@ -769,7 +820,18 @@
   </div>
 
   <script>
-    const state = { mode: 'days', days: 30, startDate: '', endDate: '', data: null, charts: {} };
+    const DEFAULT_ADMIN_IP = '111.194.217.185';
+    const ADMIN_FILTER_STORAGE_KEY = 'opsDashboardAdminIpFilter';
+    const state = {
+      mode: 'days',
+      days: 30,
+      startDate: '',
+      endDate: '',
+      filterAdminIp: true,
+      adminIp: DEFAULT_ADMIN_IP,
+      data: null,
+      charts: {}
+    };
     const palette = ['#0098c8', '#138a5b', '#a86f16', '#6955b8', '#bd3930', '#4d6f87', '#20262c', '#7b8791'];
 
     const $ = (selector) => document.querySelector(selector);
@@ -942,26 +1004,6 @@
       });
     }
 
-    function renderAiModeChart(data) {
-      const dates = data.daily.map((item) => item.date.slice(5));
-      const trends = (data.ai_mode_trends || []);
-      const series = trends.map((item) => ({
-        name: item.name,
-        type: 'bar',
-        stack: 'ai-mode',
-        data: item.data || []
-      }));
-      setChartOption('aiModeChart', {
-        color: palette,
-        tooltip: { trigger: 'axis' },
-        legend: { top: 4, type: 'scroll', textStyle: { color: '#66727d' } },
-        grid: { left: 40, right: 16, top: 52, bottom: 28 },
-        xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#dfe6ea' } } },
-        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
-        series
-      });
-    }
-
     function renderStatusChart(data) {
       setChartOption('statusChart', {
         color: ['#138a5b', '#0098c8', '#a86f16', '#bd3930', '#6955b8'],
@@ -1014,13 +1056,13 @@
       setChartOption('botSourceChart', {
         color: ['#0098c8'],
         tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-        grid: { left: 126, right: 28, top: 24, bottom: 30 },
+        grid: { left: 210, right: 34, top: 24, bottom: 30 },
         xAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
         yAxis: {
           type: 'category',
           data: sources.map((item) => item.name),
           axisLine: { lineStyle: { color: '#dfe6ea' } },
-          axisLabel: { color: '#66727d' }
+          axisLabel: { color: '#66727d', interval: 0, width: 190, overflow: 'break' }
         },
         series: [{
           name: '来源次数',
@@ -1074,7 +1116,7 @@
       renderSimpleTable('#referrerTable', data.top_referrers, '来源', '次数');
       renderSimpleTable('#regionTable', data.top_regions, '地区', '次数');
       renderSimpleTable('#clickTable', data.click_actions, '按钮/链接', '点击');
-      renderSimpleTable('#aiModeTable', data.ai_mode_details, '分析类型', '调用');
+      renderSimpleTable('#aiAnalysisTable', data.ai_analysis_breakdown || data.ai_mode_details, 'AI 分析', '调用');
       renderBvidTable(data.top_bvids);
 
       $('#apiTable').innerHTML = (data.api_endpoints || []).length
@@ -1085,17 +1127,19 @@
               <td class="numeric"><span class="tag ${Number(item.error_rate) > 5 ? 'bad' : 'good'}">${item.error_rate}%</span></td>
             </tr>
           `).join('')
-        : '<tr><td colspan="3"><div class="empty">暂无接口调用</div></td></tr>';
+        : '<tr><td colspan="3"><div class="empty">当前范围内没有 API 错误</div></td></tr>';
 
-      $('#jobTable').innerHTML = (data.jobs.by_kind_status || []).length
-        ? data.jobs.by_kind_status.map((item) => `
+      const jobRows = (data.jobs.model_status || []);
+      $('#jobTable').innerHTML = jobRows.length
+        ? jobRows.map((item) => `
             <tr>
               <td>${escapeHtml(item.kind)}</td>
-              <td><span class="tag ${item.status === '失败' ? 'bad' : (item.status === '运行中' || item.status === '排队中' ? 'warn' : 'good')}">${escapeHtml(item.status)}</span></td>
+              <td>${escapeHtml(item.model || '未记录模型')}</td>
+              <td><span class="tag ${jobStatusClass(item.status)}">${escapeHtml(item.status)}</span></td>
               <td class="numeric">${formatNumber(item.count)}</td>
             </tr>
           `).join('')
-        : '<tr><td colspan="3"><div class="empty">暂无任务</div></td></tr>';
+        : '<tr><td colspan="4"><div class="empty">暂无任务</div></td></tr>';
 
       const botRows = [
         ...(((data.bot_traffic || {}).summary || []).map((item) => ({ name: item.name, value: item.value })))
@@ -1117,7 +1161,9 @@
       const latency = data.latency || {};
       const active = data.kpis.active_jobs || {};
       $('#freshnessText').textContent = `更新 ${formatDateTime(meta.generated_at)} · p95 ${formatMs(latency.p95_ms)} · 队列 ${formatNumber(active.queued || 0)}/${formatNumber(active.running || 0)}`;
-      $('#scopeText').textContent = `${meta.range_start} 至 ${meta.range_end}，访问日志 ${formatBytes((meta.access_log || {}).size_bytes || 0)}，按钮点击 ${formatNumber((data.daily || []).reduce((sum, item) => sum + Number(item.button_clicks || 0), 0))} 次。`;
+      const filter = meta.admin_filter || {};
+      const filterText = filter.enabled ? `，已过滤管理员 IP ${escapeHtml((filter.ips || []).join('、'))}` : '';
+      $('#scopeText').textContent = `${meta.range_start} 至 ${meta.range_end}，访问日志 ${formatBytes((meta.access_log || {}).size_bytes || 0)}，按钮点击 ${formatNumber((data.daily || []).reduce((sum, item) => sum + Number(item.button_clicks || 0), 0))} 次${filterText}。`;
     }
 
     function render(data) {
@@ -1127,7 +1173,6 @@
       renderTrafficChart(data);
       renderFeatureChart(data);
       renderActionChart(data);
-      renderAiModeChart(data);
       renderStatusChart(data);
       renderUaChart(data);
       renderBotChart(data);
@@ -1148,6 +1193,42 @@
       });
     }
 
+    function loadAdminFilterPrefs() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(ADMIN_FILTER_STORAGE_KEY) || '{}');
+        if (typeof saved.enabled === 'boolean') {
+          state.filterAdminIp = saved.enabled;
+        }
+        if (saved.ip) {
+          state.adminIp = String(saved.ip);
+        }
+      } catch (error) {
+        state.filterAdminIp = true;
+        state.adminIp = DEFAULT_ADMIN_IP;
+      }
+      updateAdminFilterControls();
+    }
+
+    function saveAdminFilterPrefs() {
+      localStorage.setItem(ADMIN_FILTER_STORAGE_KEY, JSON.stringify({
+        enabled: state.filterAdminIp,
+        ip: state.adminIp || DEFAULT_ADMIN_IP
+      }));
+    }
+
+    function updateAdminFilterControls() {
+      $('#adminIpEnabled').checked = Boolean(state.filterAdminIp);
+      $('#adminIpInput').value = state.adminIp || DEFAULT_ADMIN_IP;
+    }
+
+    function applyAdminFilter() {
+      state.filterAdminIp = $('#adminIpEnabled').checked;
+      state.adminIp = ($('#adminIpInput').value || DEFAULT_ADMIN_IP).trim();
+      updateAdminFilterControls();
+      saveAdminFilterPrefs();
+      loadDashboard(currentSelection());
+    }
+
     async function loadDashboard(selection = currentSelection()) {
       if (typeof selection === 'number') {
         selection = { days: selection };
@@ -1165,6 +1246,9 @@
         state.mode = 'days';
         state.days = Number(selection.days || state.days || 30);
         params.set('days', state.days);
+      }
+      if (state.filterAdminIp && state.adminIp) {
+        params.set('exclude_ip', state.adminIp);
       }
       $('#dashboardRoot').classList.add('loading');
       $('#errorBox').style.display = 'none';
@@ -1207,6 +1291,13 @@
       return `${text.slice(0, keep)}…${text.slice(-keep)}`;
     }
 
+    function jobStatusClass(value) {
+      const text = String(value || '');
+      if (text.includes('仍失败') || text === '失败') return 'bad';
+      if (text.includes('兜底') || text === '运行中' || text === '排队中') return 'warn';
+      return 'good';
+    }
+
     function localDate(offsetDays = 0) {
       const date = new Date();
       date.setDate(date.getDate() + offsetDays);
@@ -1237,12 +1328,20 @@
       }
       loadDashboard({ startDate, endDate });
     });
+    $('#adminIpApply').addEventListener('click', applyAdminFilter);
+    $('#adminIpEnabled').addEventListener('change', applyAdminFilter);
+    $('#adminIpInput').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        applyAdminFilter();
+      }
+    });
     $('#refreshButton').addEventListener('click', () => loadDashboard(currentSelection()));
     window.addEventListener('resize', debounce(() => {
       Object.values(state.charts).forEach((instance) => instance && instance.resize());
     }, 160));
     $('#startDate').value = localDate(-29);
     $('#endDate').value = localDate(0);
+    loadAdminFilterPrefs();
     loadDashboard(30);
   </script>
 </body>

@@ -66,6 +66,7 @@ class LLMClient:
                 continue
 
             result = self._chat_json_with_config(
+                provider_name,
                 config,
                 [dict(message) for message in messages],
                 temperature=temperature,
@@ -83,6 +84,7 @@ class LLMClient:
 
     def _chat_json_with_config(
         self,
+        provider_name: str,
         config: dict[str, Any],
         messages: list[dict[str, str]],
         *,
@@ -105,10 +107,11 @@ class LLMClient:
         max_retries = int(config.get("max_retries", self.max_retries))
         retry_backoff = float(config.get("retry_backoff", self.retry_backoff))
         progress_interval = get_analysis_config()["progress_interval_seconds"]
+        model_name = str(config.get("model") or "unknown")
 
         started_at = time.monotonic()
         last_error: Exception | None = None
-        log_api("正在调用文本分析服务...")
+        log_api(f"正在调用文本分析服务：{provider_name} / {model_name}")
         for attempt in range(max_retries + 1):
             remaining = deadline - (time.monotonic() - started_at)
             if remaining <= 0:
@@ -127,8 +130,9 @@ class LLMClient:
                     time.sleep(min(retry_backoff, max(0.0, remaining)))
                     continue
                 if response.status_code != 200:
-                    log_error(f"文本分析服务返回错误: {response.status_code}")
+                    log_error(f"文本分析服务调用失败：{provider_name} / {model_name}（HTTP {response.status_code}）")
                     return None
+                log_api(f"文本分析服务调用成功：{provider_name} / {model_name}")
                 log_api("文本分析服务已返回结果，正在整理报告...")
                 data = response.json()
                 message = data["choices"][0]["message"]
@@ -141,13 +145,14 @@ class LLMClient:
                 parsed = self.extract_json(content)
                 if parsed is not None:
                     return parsed
+                log_error(f"文本分析服务调用失败：{provider_name} / {model_name}（结果格式无效）")
                 return None
             except Exception as exc:
                 last_error = exc
                 if attempt >= max_retries:
                     break
                 time.sleep(retry_backoff)
-        log_error(LLMClient._describe_request_error(last_error))
+        log_error(f"文本分析服务调用失败：{provider_name} / {model_name}（{LLMClient._describe_request_error(last_error)}）")
         return None
 
     @staticmethod

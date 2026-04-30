@@ -1341,6 +1341,7 @@ def ops_dashboard_data():
         request.args.get("days", 30),
         request.args.get("start"),
         request.args.get("end"),
+        request.args.get("exclude_ip"),
     )
     response = jsonify({"success": True, "data": data, "error": None, "meta": {"schema_version": "2.0"}})
     return _noindex_response(response)
