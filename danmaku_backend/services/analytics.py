@@ -131,7 +131,7 @@ BOT_SOURCE_RULES = (
     ("其他 Bot", "其他 Bot", GENERIC_BOT_TOKENS),
 )
 INTERNAL_HOSTS = {"danmu.liu-qi.cn", "dm.liu-qi.cn"}
-ANALYTICS_CACHE_SECONDS = 300
+ANALYTICS_CACHE_SECONDS = 900
 MAX_ACCESS_LOG_BYTES = 80 * 1024 * 1024
 OPS_VIDEO_META_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_video_meta.json")
 OPS_IP_REGION_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_ip_region_cache.json")
@@ -205,14 +205,9 @@ AI_MODE_LABELS = {
     "custom_deep": ("自主模型", "自主深度分析", "custom_ai_calls"),
 }
 OPERATING_FEATURE_CATEGORIES = {
-    "page_home",
-    "page_result",
-    "page_faq",
-    "page_plugin",
     "download_generate",
     "download_csv",
     "download_txt",
-    "plugin_download",
     "subtitle_upload",
     "content_analysis",
     "deep_analysis",
@@ -272,6 +267,17 @@ REGION_LABELS = {
     "Wuhan": "武汉",
     "Xi'an": "西安",
     "Xian": "西安",
+    "Changsha": "长沙",
+    "Shaoxing": "绍兴",
+    "Shijiazhuang": "石家庄",
+    "Haikou": "海口",
+    "Nanning": "南宁",
+    "Zhangjiakou": "张家口",
+    "Qingdao": "青岛",
+    "Jinan": "济南",
+    "Shenyang": "沈阳",
+    "Virginia": "弗吉尼亚",
+    "Ashburn": "阿什本",
 }
 
 PAGE_CATEGORIES = {"page_home", "page_result", "page_faq", "page_plugin"}
@@ -473,6 +479,7 @@ def build_ops_dashboard(
             reports["top_bvids"],
             video_meta=reports["video_meta"],
         ),
+        "ai_bvids": _ai_bvid_items(jobs["ai_bvids"], video_meta=reports["video_meta"]),
         "jobs": jobs["summary"],
         "artifacts": artifacts["summary"],
         "reports": reports["summary"],
@@ -668,7 +675,7 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
         "ai_mode_details": ai_mode_details,
         "ai_mode_daily": ai_mode_daily,
         "ai_detail_daily": ai_detail_daily,
-        "top_regions": _region_items_from_segments(top_ip_segments, 12),
+        "top_regions": _region_items_from_segments(top_ip_segments, 16),
         "bot_traffic": {
             "families": _counter_items(bot_families, 8),
             "summary": _counter_items(bot_sources, 12),
@@ -821,6 +828,7 @@ def _job_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | None = 
     daily = {key: {"analysis_jobs": 0, "job_succeeded": 0, "job_failed": 0} for key in date_keys}
     by_kind_status: Counter[str] = Counter()
     by_model_status: Counter[tuple[str, str, str]] = Counter()
+    ai_bvids: dict[str, dict[str, Any]] = {}
     active = {"queued": 0, "running": 0}
     durations: list[float] = []
     trends: dict[str, Counter[str]] = defaultdict(Counter)
@@ -860,6 +868,29 @@ def _job_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | None = 
             by_kind_status[f"{kind}:{status}"] += 1
             model_label, model_outcome = _job_model_outcome(status, events_by_job.get(str(row["job_id"])) or [])
             by_model_status[(_job_kind_label(kind), model_label, model_outcome)] += 1
+            bvid = _normalize_bvid(str(payload.get("bvid") or ""))
+            if bvid:
+                ai_item = ai_bvids.setdefault(
+                    bvid,
+                    {
+                        "value": 0,
+                        "content": 0,
+                        "deep": 0,
+                        "succeeded": 0,
+                        "failed": 0,
+                        "latest_at": "",
+                    },
+                )
+                ai_item["value"] += 1
+                if kind == "content_analysis":
+                    ai_item["content"] += 1
+                elif kind == "deep_analysis":
+                    ai_item["deep"] += 1
+                if status == "succeeded":
+                    ai_item["succeeded"] += 1
+                elif status == "failed":
+                    ai_item["failed"] += 1
+                ai_item["latest_at"] = max(str(ai_item.get("latest_at") or ""), str(row["created_at"] or ""))
             daily[date_key]["analysis_jobs"] += 1
             trends[date_key][label] += 1
             if status == "succeeded":
@@ -873,6 +904,7 @@ def _job_metrics(date_keys: list[str], excluded_analysis_ids: set[str] | None = 
     trend_names = sorted({name for counts in trends.values() for name in counts})
     return {
         "daily": daily,
+        "ai_bvids": ai_bvids,
         "summary": {
             "active": active,
             "by_kind_status": [
@@ -1060,8 +1092,6 @@ def _feature_trends(date_keys: list[str], feature_daily: dict[str, Counter[str]]
         totals.update(counts)
     keep = [name for name, _ in totals.most_common(9)]
     priority = [
-        "首页",
-        "结果页",
         "弹幕解析",
         "CSV下载",
         "TXT下载",
@@ -1071,8 +1101,7 @@ def _feature_trends(date_keys: list[str], feature_daily: dict[str, Counter[str]]
         "自主深度分析",
         "分享报告保存",
         "分享报告读取",
-        "插件页",
-        "插件包下载",
+        "字幕上传",
     ]
     ordered = [name for name in priority if name in keep]
     ordered.extend([name for name in keep if name not in ordered])
@@ -1098,6 +1127,36 @@ def _top_bvids(*counters: Counter[str], video_meta: dict[str, dict[str, str]] | 
         }
         for name, value in top_items
     ]
+
+
+def _ai_bvid_items(
+    ai_bvids: dict[str, dict[str, Any]],
+    video_meta: dict[str, dict[str, str]] | None = None,
+    limit: int = 12,
+) -> list[dict[str, Any]]:
+    top_items = sorted(
+        ai_bvids.items(),
+        key=lambda item: (int(item[1].get("value") or 0), str(item[1].get("latest_at") or "")),
+        reverse=True,
+    )[:limit]
+    meta = _video_meta_for_bvids([name for name, _ in top_items], video_meta or {})
+    rows: list[dict[str, Any]] = []
+    for bvid, stats in top_items:
+        rows.append(
+            {
+                "name": bvid,
+                "value": int(stats.get("value") or 0),
+                "content": int(stats.get("content") or 0),
+                "deep": int(stats.get("deep") or 0),
+                "succeeded": int(stats.get("succeeded") or 0),
+                "failed": int(stats.get("failed") or 0),
+                "latest_at": str(stats.get("latest_at") or ""),
+                "title": meta.get(bvid, {}).get("title", ""),
+                "author": meta.get(bvid, {}).get("author", ""),
+                "url": meta.get(bvid, {}).get("url", f"https://www.bilibili.com/video/{bvid}"),
+            }
+        )
+    return rows
 
 
 def _api_endpoint_items(counts: Counter[str], errors: Counter[str]) -> list[dict[str, Any]]:
@@ -1525,19 +1584,19 @@ def _region_items_from_segments(segments: Counter[str], limit: int = 12) -> list
     if not segments:
         return []
     cache = _read_ip_region_cache()
-    top_segments = segments.most_common(160)
+    top_segments = segments.most_common(200)
     missing = [
         segment
-        for segment, _ in top_segments[:16]
+        for segment, _ in top_segments[:48]
         if (
             segment not in cache
             or _is_placeholder_region((cache.get(segment) or {}).get("label"))
         )
         and _public_representative_ip(segment)
-    ][:8]
+    ][:24]
     changed = False
     if missing:
-        with ThreadPoolExecutor(max_workers=min(4, len(missing))) as executor:
+        with ThreadPoolExecutor(max_workers=min(10, len(missing))) as executor:
             futures = {executor.submit(_fetch_ip_region, _public_representative_ip(segment)): segment for segment in missing}
             for future in as_completed(futures):
                 segment = futures[future]
@@ -1626,7 +1685,7 @@ def _fetch_ipapi_region(ip_value: str) -> str:
     try:
         response = requests.get(
             f"https://ipapi.co/{ip_value}/json/",
-            timeout=(1, 3),
+            timeout=(0.6, 1.8),
         )
         response.raise_for_status()
         payload = response.json()
@@ -1644,7 +1703,7 @@ def _fetch_ipapi_region(ip_value: str) -> str:
 
 def _fetch_ipinfo_region(ip_value: str) -> str:
     try:
-        response = requests.get(f"https://ipinfo.io/{ip_value}/json", timeout=(1, 3))
+        response = requests.get(f"https://ipinfo.io/{ip_value}/json", timeout=(0.6, 1.8))
         response.raise_for_status()
         payload = response.json()
     except Exception:
@@ -1675,8 +1734,18 @@ def _friendly_region_name(value: Any) -> str:
     return REGION_LABELS.get(text, text)
 
 
+def _normalize_region_label(value: Any) -> str:
+    parts = [part.strip() for part in str(value or "").split("/") if part.strip()]
+    normalized: list[str] = []
+    for part in parts:
+        text = COUNTRY_LABELS.get(part.upper()) or _friendly_region_name(part)
+        if text and text not in normalized:
+            normalized.append(text)
+    return " / ".join(normalized[:3])
+
+
 def _is_placeholder_region(value: Any) -> bool:
-    text = str(value or "").strip()
+    text = _normalize_region_label(value)
     return not text or text in IP_REGION_LABEL_BLACKLIST
 
 
@@ -1687,11 +1756,15 @@ def _read_ip_region_cache() -> dict[str, dict[str, Any]]:
         return {}
     if not isinstance(raw, dict):
         return {}
-    return {
-        str(segment): value
-        for segment, value in raw.items()
-        if isinstance(value, dict) and not _is_placeholder_region(value.get("label"))
-    }
+    cache: dict[str, dict[str, Any]] = {}
+    for segment, value in raw.items():
+        if not isinstance(value, dict):
+            continue
+        label = _normalize_region_label(value.get("label"))
+        if _is_placeholder_region(label):
+            continue
+        cache[str(segment)] = {**value, "label": label}
+    return cache
 
 
 def _write_ip_region_cache(cache: dict[str, dict[str, Any]]) -> None:

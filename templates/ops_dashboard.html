@@ -329,6 +329,38 @@
       gap: 12px;
     }
 
+    .panel-tools {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+
+    .segmented {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 2px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafb;
+    }
+
+    .segmented button {
+      min-height: 28px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .segmented button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
     .panel-head h3 {
       margin: 0;
       font-size: 14px;
@@ -350,6 +382,11 @@
     .chart.small {
       height: 260px;
       min-height: 260px;
+    }
+
+    .chart.compact {
+      height: 300px;
+      min-height: 300px;
     }
 
     .bot-chart-grid {
@@ -640,15 +677,39 @@
         </div>
       </section>
 
+      <section class="section">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>核心行为</h3>
+              <span id="behaviorScopeText">服务端请求口径：解析、下载、AI 与分享</span>
+            </div>
+            <div class="panel-tools">
+              <div class="segmented" role="group" aria-label="核心行为口径">
+                <button type="button" data-behavior-mode="server" class="active">请求口径</button>
+                <button type="button" data-behavior-mode="click">点击埋点</button>
+              </div>
+            </div>
+          </div>
+          <div id="behaviorChart" class="chart compact"></div>
+          <div class="table-wrap">
+            <table>
+              <thead id="behaviorTableHead"></thead>
+              <tbody id="behaviorTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <section class="section grid two-grid">
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>功能使用变化</h3>
-              <span>页面、解析、下载与 AI 功能</span>
+              <h3>AI 分析构成</h3>
+              <span>内置与自主模型的内容/深度分析</span>
             </div>
           </div>
-          <div id="featureChart" class="chart"></div>
+          <div id="aiAnalysisChart" class="chart small"></div>
           <div class="table-wrap">
             <table>
               <thead><tr><th>AI 分析</th><th class="numeric">调用</th></tr></thead>
@@ -656,24 +717,6 @@
             </table>
           </div>
         </div>
-        <div class="panel">
-          <div class="panel-head">
-            <div>
-              <h3>关键按钮点击</h3>
-              <span>从前端埋点记录真实点击</span>
-            </div>
-          </div>
-          <div id="actionChart" class="chart small"></div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>按钮/链接</th><th class="numeric">点击</th></tr></thead>
-              <tbody id="clickTable"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <section class="section grid two-grid">
         <div class="panel">
           <div class="panel-head">
             <div>
@@ -735,12 +778,18 @@
           <div class="panel-head">
             <div>
               <h3>热门 BV</h3>
-              <span>来自结果页、下载、报告与解析记录</span>
+              <span id="bvidScopeText">来自结果页、下载、报告与解析记录</span>
+            </div>
+            <div class="panel-tools">
+              <div class="segmented" role="group" aria-label="BV 榜单">
+                <button type="button" data-bvid-mode="all" class="active">全部热度</button>
+                <button type="button" data-bvid-mode="ai">AI 分析</button>
+              </div>
             </div>
           </div>
           <div class="table-wrap">
             <table class="bvid-table">
-              <thead><tr><th>BV号</th><th>视频标题</th><th>UP主</th><th>视频</th><th class="numeric">热度</th></tr></thead>
+              <thead id="bvidTableHead"></thead>
               <tbody id="bvidTable"></tbody>
             </table>
           </div>
@@ -829,6 +878,8 @@
       endDate: '',
       filterAdminIp: true,
       adminIp: DEFAULT_ADMIN_IP,
+      behaviorMode: 'server',
+      bvidMode: 'all',
       data: null,
       charts: {}
     };
@@ -965,42 +1016,53 @@
       });
     }
 
-    function renderFeatureChart(data) {
+    function renderBehaviorPanel(data) {
       const dates = data.daily.map((item) => item.date.slice(5));
-      const series = (data.feature_trends || []).map((item) => ({
+      const isClick = state.behaviorMode === 'click';
+      $$('.segmented button[data-behavior-mode]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.behaviorMode === state.behaviorMode);
+      });
+      const trends = isClick ? (data.click_trends || []) : (data.feature_trends || []);
+      const totals = isClick ? (data.click_actions || []) : trendTotals(trends);
+      const series = trends.map((item) => ({
         name: item.name,
         type: 'bar',
-        stack: 'features',
+        stack: isClick ? 'clicks' : 'server-actions',
         emphasis: { focus: 'series' },
         data: item.data || []
       }));
-      setChartOption('featureChart', {
+      $('#behaviorScopeText').textContent = isClick
+        ? '前端点击埋点：从埋点上线后开始累计'
+        : '服务端请求口径：解析、下载、AI 与分享';
+      setChartOption('behaviorChart', {
         color: palette,
         tooltip: { trigger: 'axis' },
         legend: { top: 8, type: 'scroll', textStyle: { color: '#66727d' } },
         grid: { left: 42, right: 18, top: 58, bottom: 34 },
         xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#dfe6ea' } } },
         yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
-        series
+        series: series.length ? series : [{ name: isClick ? '暂无点击' : '暂无行为', type: 'bar', data: dates.map(() => 0) }]
       });
+      $('#behaviorTableHead').innerHTML = `<tr><th>${isClick ? '按钮/链接' : '行为'}</th><th class="numeric">${isClick ? '点击' : '请求'}</th></tr>`;
+      renderSimpleTable('#behaviorTable', totals, isClick ? '按钮/链接' : '行为', isClick ? '点击' : '请求');
     }
 
-    function renderActionChart(data) {
+    function renderAiAnalysisChart(data) {
       const dates = data.daily.map((item) => item.date.slice(5));
-      const series = (data.click_trends || []).map((item) => ({
+      const series = (data.ai_analysis_trends || []).map((item) => ({
         name: item.name,
         type: 'bar',
-        stack: 'clicks',
+        stack: 'ai-analysis',
         data: item.data || []
       }));
-      setChartOption('actionChart', {
+      setChartOption('aiAnalysisChart', {
         color: palette,
         tooltip: { trigger: 'axis' },
         legend: { top: 4, type: 'scroll', textStyle: { color: '#66727d' } },
         grid: { left: 40, right: 16, top: 52, bottom: 28 },
         xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#dfe6ea' } } },
         yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
-        series: series.length ? series : [{ name: '暂无点击', type: 'bar', data: dates.map(() => 0) }]
+        series: series.length ? series : [{ name: '暂无 AI 分析', type: 'bar', data: dates.map(() => 0) }]
       });
     }
 
@@ -1088,10 +1150,30 @@
       `).join('');
     }
 
-    function renderBvidTable(rows) {
+    function trendTotals(trends) {
+      return (trends || []).map((item) => ({
+        name: item.name,
+        value: (item.data || []).reduce((sum, value) => sum + Number(value || 0), 0)
+      })).filter((item) => item.value > 0);
+    }
+
+    function renderBvidPanel(data) {
+      const isAi = state.bvidMode === 'ai';
+      $('#bvidScopeText').textContent = isAi ? '有 AI 分析任务记录的 BV' : '来自结果页、下载、报告与解析记录';
+      $$('.segmented button[data-bvid-mode]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.bvidMode === state.bvidMode);
+      });
+      renderBvidTable(isAi ? (data.ai_bvids || []) : (data.top_bvids || []), isAi);
+    }
+
+    function renderBvidTable(rows, isAi = false) {
       const target = $('#bvidTable');
+      const head = $('#bvidTableHead');
+      head.innerHTML = isAi
+        ? '<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th>AI分析</th><th>视频</th><th class="numeric">次数</th></tr>'
+        : '<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th>视频</th><th class="numeric">热度</th></tr>';
       if (!rows || rows.length === 0) {
-        target.innerHTML = '<tr><td colspan="5"><div class="empty">暂无 BV 数据</div></td></tr>';
+        target.innerHTML = `<tr><td colspan="${isAi ? 6 : 5}"><div class="empty">暂无 BV 数据</div></td></tr>`;
         return;
       }
       target.innerHTML = rows.map((item) => {
@@ -1099,6 +1181,23 @@
         const title = item.title || '标题暂未获取';
         const author = item.author || '未知';
         const url = item.url || `https://www.bilibili.com/video/${encodeURIComponent(bvid)}`;
+        if (isAi) {
+          const parts = [];
+          if (item.content) parts.push(`内容 ${formatNumber(item.content)}`);
+          if (item.deep) parts.push(`深度 ${formatNumber(item.deep)}`);
+          if (item.succeeded) parts.push(`成功 ${formatNumber(item.succeeded)}`);
+          if (item.failed) parts.push(`失败 ${formatNumber(item.failed)}`);
+          return `
+            <tr>
+              <td>${escapeHtml(bvid)}</td>
+              <td class="video-title-cell" title="${escapeHtml(title)}">${escapeHtml(middleEllipsis(title, 34))}</td>
+              <td title="${escapeHtml(author)}">${escapeHtml(middleEllipsis(author, 18))}</td>
+              <td>${escapeHtml(parts.join(' / ') || 'AI分析')}</td>
+              <td><a class="table-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">查看视频</a></td>
+              <td class="numeric">${formatNumber(item.value || 0)}</td>
+            </tr>
+          `;
+        }
         return `
           <tr>
             <td>${escapeHtml(bvid)}</td>
@@ -1115,9 +1214,8 @@
       renderSimpleTable('#pageTable', data.top_pages, '页面', 'PV');
       renderSimpleTable('#referrerTable', data.top_referrers, '来源', '次数');
       renderSimpleTable('#regionTable', data.top_regions, '地区', '次数');
-      renderSimpleTable('#clickTable', data.click_actions, '按钮/链接', '点击');
       renderSimpleTable('#aiAnalysisTable', data.ai_analysis_breakdown || data.ai_mode_details, 'AI 分析', '调用');
-      renderBvidTable(data.top_bvids);
+      renderBvidPanel(data);
 
       $('#apiTable').innerHTML = (data.api_endpoints || []).length
         ? data.api_endpoints.map((item) => `
@@ -1171,8 +1269,8 @@
       renderKpis(data);
       renderPeriodCompare(data);
       renderTrafficChart(data);
-      renderFeatureChart(data);
-      renderActionChart(data);
+      renderBehaviorPanel(data);
+      renderAiAnalysisChart(data);
       renderStatusChart(data);
       renderUaChart(data);
       renderBotChart(data);
@@ -1317,6 +1415,18 @@
 
     $$('.rangebar button').forEach((button) => {
       button.addEventListener('click', () => loadDashboard(Number(button.dataset.days)));
+    });
+    $$('.segmented button[data-behavior-mode]').forEach((button) => {
+      button.addEventListener('click', () => {
+        state.behaviorMode = button.dataset.behaviorMode || 'server';
+        if (state.data) renderBehaviorPanel(state.data);
+      });
+    });
+    $$('.segmented button[data-bvid-mode]').forEach((button) => {
+      button.addEventListener('click', () => {
+        state.bvidMode = button.dataset.bvidMode || 'all';
+        if (state.data) renderBvidPanel(state.data);
+      });
     });
     $('#applyDateButton').addEventListener('click', () => {
       const startDate = $('#startDate').value;
