@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow,noarchive">
   <title>运营看板｜小刘BOT danmuku</title>
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <script src="{{ url_for('static', filename='vendor/echarts.min.js', v='20260430ops2') }}"></script>
   <style>
     :root {
       --bg: #f6f7f8;
@@ -69,10 +69,23 @@
     }
 
     .brand-mark {
-      width: 28px;
-      height: 28px;
+      position: relative;
+      width: 32px;
+      height: 32px;
+      border-radius: 11px;
+      background:
+        radial-gradient(circle at 28% 20%, rgba(255,255,255,0.9), transparent 42%),
+        linear-gradient(160deg, #0978a0, #00a1d6);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.22);
+      flex: 0 0 auto;
+    }
+
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      inset: 7px;
+      border: 1.6px solid rgba(255,255,255,0.74);
       border-radius: 8px;
-      background: linear-gradient(160deg, #007aa2, #00a1d6);
     }
 
     .brand strong {
@@ -87,7 +100,16 @@
       font-size: 12px;
     }
 
-    .rangebar {
+    .range-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .rangebar,
+    .date-range {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -96,6 +118,8 @@
     }
 
     .rangebar button,
+    .date-range input,
+    .date-apply,
     .refresh-button {
       min-height: 34px;
       padding: 0 12px;
@@ -108,6 +132,8 @@
     }
 
     .rangebar button:hover,
+    .date-range input:hover,
+    .date-apply:hover,
     .refresh-button:hover {
       border-color: rgba(0, 152, 200, 0.45);
     }
@@ -116,6 +142,16 @@
       border-color: var(--accent);
       background: var(--accent);
       color: #fff;
+    }
+
+    .date-range input {
+      width: 132px;
+      color: var(--ink);
+    }
+
+    .date-range span {
+      color: var(--muted);
+      font-size: 12px;
     }
 
     .freshness {
@@ -323,6 +359,20 @@
       color: var(--red);
     }
 
+    .table-link {
+      color: var(--accent);
+      font-weight: 650;
+      text-decoration: none;
+    }
+
+    .table-link:hover {
+      text-decoration: underline;
+    }
+
+    .video-title-cell {
+      max-width: 520px;
+    }
+
     .comparison {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -439,10 +489,19 @@
           <span>运营看板</span>
         </div>
       </div>
-      <div class="rangebar" role="group" aria-label="数据范围">
-        <button type="button" data-days="7">7天</button>
-        <button type="button" data-days="30" class="active">30天</button>
-        <button type="button" data-days="90">90天</button>
+      <div class="range-controls">
+        <div class="rangebar" role="group" aria-label="快速筛选">
+          <button type="button" data-days="1">今日</button>
+          <button type="button" data-days="7">7天</button>
+          <button type="button" data-days="30" class="active">30天</button>
+          <button type="button" data-days="90">90天</button>
+        </div>
+        <div class="date-range" aria-label="自定义日期范围">
+          <input type="date" id="startDate" aria-label="开始日期">
+          <span>至</span>
+          <input type="date" id="endDate" aria-label="结束日期">
+          <button class="date-apply" type="button" id="applyDateButton">应用</button>
+        </div>
       </div>
       <div class="freshness">
         <span id="freshnessText">正在读取数据</span>
@@ -592,7 +651,7 @@
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>BV号</th><th class="numeric">热度</th></tr></thead>
+              <thead><tr><th>BV号</th><th>视频标题</th><th>UP主</th><th>视频</th><th class="numeric">热度</th></tr></thead>
               <tbody id="bvidTable"></tbody>
             </table>
           </div>
@@ -642,17 +701,23 @@
   </div>
 
   <script>
-    const state = { days: 30, data: null, charts: {} };
+    const state = { mode: 'days', days: 30, startDate: '', endDate: '', data: null, charts: {} };
     const palette = ['#0098c8', '#138a5b', '#a86f16', '#6955b8', '#bd3930', '#4d6f87', '#20262c', '#7b8791'];
 
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
-    function chart(id) {
-      if (!state.charts[id]) {
-        state.charts[id] = echarts.init(document.getElementById(id));
+    function setChartOption(id, option) {
+      const element = document.getElementById(id);
+      if (!element) return;
+      if (!window.echarts) {
+        element.innerHTML = '<div class="empty">图表库加载失败，表格数据仍可查看。</div>';
+        return;
       }
-      return state.charts[id];
+      if (!state.charts[id]) {
+        state.charts[id] = echarts.init(element);
+      }
+      state.charts[id].setOption(option, true);
     }
 
     function formatNumber(value) {
@@ -757,7 +822,7 @@
         symbolSize: 5,
         data: data.daily.map((item) => item[key] || 0)
       }));
-      chart('trafficChart').setOption({
+      setChartOption('trafficChart', {
         color: palette,
         tooltip: { trigger: 'axis' },
         legend: { top: 8, textStyle: { color: '#66727d' } },
@@ -765,7 +830,7 @@
         xAxis: { type: 'category', data: dates, boundaryGap: false, axisLine: { lineStyle: { color: '#dfe6ea' } } },
         yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
         series
-      }, true);
+      });
     }
 
     function renderFeatureChart(data) {
@@ -777,7 +842,7 @@
         emphasis: { focus: 'series' },
         data: item.data || []
       }));
-      chart('featureChart').setOption({
+      setChartOption('featureChart', {
         color: palette,
         tooltip: { trigger: 'axis' },
         legend: { top: 8, type: 'scroll', textStyle: { color: '#66727d' } },
@@ -785,12 +850,12 @@
         xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#dfe6ea' } } },
         yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
         series
-      }, true);
+      });
     }
 
     function renderDownloadChart(data) {
       const rows = data.download_breakdown || [];
-      chart('downloadChart').setOption({
+      setChartOption('downloadChart', {
         color: palette,
         tooltip: { trigger: 'item' },
         legend: { bottom: 8, textStyle: { color: '#66727d' } },
@@ -802,7 +867,7 @@
           label: { formatter: '{b}: {c}' },
           data: rows.length ? rows : [{ name: '暂无下载', value: 0 }]
         }]
-      }, true);
+      });
     }
 
     function renderJobChart(data) {
@@ -814,7 +879,7 @@
         stack: 'jobs',
         data: item.data || []
       }));
-      chart('jobChart').setOption({
+      setChartOption('jobChart', {
         color: palette,
         tooltip: { trigger: 'axis' },
         legend: { top: 4, type: 'scroll', textStyle: { color: '#66727d' } },
@@ -822,11 +887,11 @@
         xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#dfe6ea' } } },
         yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
         series
-      }, true);
+      });
     }
 
     function renderStatusChart(data) {
-      chart('statusChart').setOption({
+      setChartOption('statusChart', {
         color: ['#138a5b', '#0098c8', '#a86f16', '#bd3930', '#6955b8'],
         tooltip: { trigger: 'item' },
         legend: { bottom: 4, textStyle: { color: '#66727d' } },
@@ -837,11 +902,11 @@
           label: { formatter: '{b}: {c}' },
           data: (data.status_codes || []).map((item) => ({ name: item.name, value: item.value }))
         }]
-      }, true);
+      });
     }
 
     function renderUaChart(data) {
-      chart('uaChart').setOption({
+      setChartOption('uaChart', {
         color: palette,
         tooltip: { trigger: 'item' },
         legend: { bottom: 4, textStyle: { color: '#66727d' } },
@@ -852,7 +917,7 @@
           label: { formatter: '{b}: {c}' },
           data: (data.top_user_agents || []).map((item) => ({ name: item.name, value: item.value }))
         }]
-      }, true);
+      });
     }
 
     function renderSimpleTable(selector, rows, firstLabel, valueLabel) {
@@ -869,11 +934,34 @@
       `).join('');
     }
 
+    function renderBvidTable(rows) {
+      const target = $('#bvidTable');
+      if (!rows || rows.length === 0) {
+        target.innerHTML = '<tr><td colspan="5"><div class="empty">暂无 BV 数据</div></td></tr>';
+        return;
+      }
+      target.innerHTML = rows.map((item) => {
+        const bvid = item.name || '';
+        const title = item.title || '标题暂未获取';
+        const author = item.author || '未知';
+        const url = item.url || `https://www.bilibili.com/video/${encodeURIComponent(bvid)}`;
+        return `
+          <tr>
+            <td>${escapeHtml(bvid)}</td>
+            <td class="video-title-cell" title="${escapeHtml(title)}">${escapeHtml(middleEllipsis(title, 34))}</td>
+            <td title="${escapeHtml(author)}">${escapeHtml(middleEllipsis(author, 18))}</td>
+            <td><a class="table-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">查看视频</a></td>
+            <td class="numeric">${formatNumber(item.value || 0)}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
     function renderTables(data) {
       renderSimpleTable('#pageTable', data.top_pages, '页面', 'PV');
       renderSimpleTable('#referrerTable', data.top_referrers, '来源', '次数');
       renderSimpleTable('#ipTable', data.top_ip_segments, '网段', '次数');
-      renderSimpleTable('#bvidTable', data.top_bvids, 'BV号', '热度');
+      renderBvidTable(data.top_bvids);
 
       $('#apiTable').innerHTML = (data.api_endpoints || []).length
         ? data.api_endpoints.map((item) => `
@@ -944,13 +1032,43 @@
       renderTables(data);
     }
 
-    async function loadDashboard(days = state.days) {
-      state.days = days;
+    function currentSelection() {
+      if (state.mode === 'custom') {
+        return { startDate: state.startDate, endDate: state.endDate };
+      }
+      return { days: state.days };
+    }
+
+    function updateRangeControls() {
+      $$('.rangebar button').forEach((button) => {
+        const active = state.mode === 'days' && Number(button.dataset.days) === Number(state.days);
+        button.classList.toggle('active', active);
+      });
+    }
+
+    async function loadDashboard(selection = currentSelection()) {
+      if (typeof selection === 'number') {
+        selection = { days: selection };
+      }
+      const params = new URLSearchParams();
+      if (selection.startDate || selection.endDate) {
+        state.mode = 'custom';
+        state.startDate = selection.startDate || $('#startDate').value || localDate(-29);
+        state.endDate = selection.endDate || $('#endDate').value || localDate(0);
+        params.set('start', state.startDate);
+        params.set('end', state.endDate);
+        $('#startDate').value = state.startDate;
+        $('#endDate').value = state.endDate;
+      } else {
+        state.mode = 'days';
+        state.days = Number(selection.days || state.days || 30);
+        params.set('days', state.days);
+      }
       $('#dashboardRoot').classList.add('loading');
       $('#errorBox').style.display = 'none';
-      $$('.rangebar button').forEach((button) => button.classList.toggle('active', Number(button.dataset.days) === Number(days)));
+      updateRangeControls();
       try {
-        const response = await fetch(`/api/v2/ops-dashboard?days=${encodeURIComponent(days)}`, { cache: 'no-store' });
+        const response = await fetch(`/api/v2/ops-dashboard?${params.toString()}`, { cache: 'no-store' });
         const payload = await response.json();
         if (!response.ok || !payload.success) {
           throw new Error((payload.error && payload.error.message) || '看板数据读取失败');
@@ -980,6 +1098,22 @@
       return String(value).replace('T', ' ').slice(0, 19);
     }
 
+    function middleEllipsis(value, maxLength) {
+      const text = String(value || '');
+      if (text.length <= maxLength) return text;
+      const keep = Math.max(4, Math.floor((maxLength - 1) / 2));
+      return `${text.slice(0, keep)}…${text.slice(-keep)}`;
+    }
+
+    function localDate(offsetDays = 0) {
+      const date = new Date();
+      date.setDate(date.getDate() + offsetDays);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
     function debounce(fn, wait) {
       let timer = null;
       return function debounced() {
@@ -991,10 +1125,22 @@
     $$('.rangebar button').forEach((button) => {
       button.addEventListener('click', () => loadDashboard(Number(button.dataset.days)));
     });
-    $('#refreshButton').addEventListener('click', () => loadDashboard(state.days));
+    $('#applyDateButton').addEventListener('click', () => {
+      const startDate = $('#startDate').value;
+      const endDate = $('#endDate').value;
+      if (!startDate || !endDate) {
+        $('#errorBox').textContent = '请选择开始和结束日期';
+        $('#errorBox').style.display = 'block';
+        return;
+      }
+      loadDashboard({ startDate, endDate });
+    });
+    $('#refreshButton').addEventListener('click', () => loadDashboard(currentSelection()));
     window.addEventListener('resize', debounce(() => {
-      Object.values(state.charts).forEach((instance) => instance.resize());
+      Object.values(state.charts).forEach((instance) => instance && instance.resize());
     }, 160));
+    $('#startDate').value = localDate(-29);
+    $('#endDate').value = localDate(0);
     loadDashboard(30);
   </script>
 </body>

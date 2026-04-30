@@ -1336,7 +1336,11 @@ def run_cleanup():
 
 @app.route("/api/v2/ops-dashboard")
 def ops_dashboard_data():
-    data = build_ops_dashboard(request.args.get("days", 30))
+    data = build_ops_dashboard(
+        request.args.get("days", 30),
+        request.args.get("start"),
+        request.args.get("end"),
+    )
     response = jsonify({"success": True, "data": data, "error": None, "meta": {"schema_version": "2.0"}})
     return _noindex_response(response)
 

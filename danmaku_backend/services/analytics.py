@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 import hashlib
 import ipaddress
@@ -15,7 +16,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from danmaku_backend.services.bilibili import BV_RE
+import requests
+
+from danmaku_backend.services.bilibili import BILIBILI_HEADERS, BV_RE
 from danmaku_backend.services.database import connect_state_db, ensure_state_db
 from danmaku_backend.settings import (
     ACCESS_LOG_FILE,
@@ -43,6 +46,7 @@ BOT_RE = re.compile(
 INTERNAL_HOSTS = {"danmu.liu-qi.cn", "dm.liu-qi.cn"}
 ANALYTICS_CACHE_SECONDS = 300
 MAX_ACCESS_LOG_BYTES = 80 * 1024 * 1024
+OPS_VIDEO_META_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_video_meta.json")
 
 FEATURE_LABELS = {
     "page_home": "首页",
@@ -133,9 +137,10 @@ def record_request_event(flask_request, response, duration_ms: float | None = No
         )
 
 
-def build_ops_dashboard(days: int = 30) -> dict[str, Any]:
-    days = _clamp_days(days)
-    cache_key = f"ops:{days}"
+def build_ops_dashboard(days: int = 30, start_date: str | None = None, end_date: str | None = None) -> dict[str, Any]:
+    date_keys = _date_keys_for_range(start_date, end_date, days)
+    days = len(date_keys)
+    cache_key = f"ops:{date_keys[0]}:{date_keys[-1]}"
     now = time.time()
     with _dashboard_cache_lock:
         cached = _dashboard_cache.get(cache_key)
@@ -147,7 +152,6 @@ def build_ops_dashboard(days: int = 30) -> dict[str, Any]:
             _dashboard_cache[cache_key] = (now, disk_cached)
         return disk_cached
 
-    date_keys = _date_keys(days)
     access = _access_log_metrics(date_keys)
     events = _analytics_event_metrics(date_keys)
     artifacts = _artifact_metrics(date_keys)
@@ -188,7 +192,12 @@ def build_ops_dashboard(days: int = 30) -> dict[str, Any]:
         "top_referrers": _counter_items(access["top_referrers"], 10),
         "top_ip_segments": _counter_items(access["top_ip_segments"], 12),
         "top_user_agents": _counter_items(access["top_user_agents"], 8),
-        "top_bvids": _top_bvids(access["top_bvids"], artifacts["top_bvids"], reports["top_bvids"]),
+        "top_bvids": _top_bvids(
+            access["top_bvids"],
+            artifacts["top_bvids"],
+            reports["top_bvids"],
+            video_meta=reports["video_meta"],
+        ),
         "jobs": jobs["summary"],
         "artifacts": artifacts["summary"],
         "reports": reports["summary"],
@@ -506,6 +515,7 @@ def _report_metrics(date_keys: list[str]) -> dict[str, Any]:
     date_set = set(date_keys)
     daily = {key: {"reports": 0} for key in date_keys}
     top_bvids: Counter[str] = Counter()
+    video_meta: dict[str, dict[str, str]] = {}
     active_reports = 0
     archived_reports = 0
     for path in REPORT_DIR.glob("*.json") if REPORT_DIR.exists() else []:
@@ -518,6 +528,16 @@ def _report_metrics(date_keys: list[str]) -> dict[str, Any]:
         bvid = str(report.get("bvid") or "")
         if bvid:
             top_bvids[bvid] += 1
+            video_info = (report.get("snapshot") or {}).get("video_info") or {}
+            if isinstance(video_info, dict):
+                title = str(video_info.get("title") or "").strip()
+                author = str(video_info.get("author") or "").strip()
+                if title or author:
+                    video_meta[bvid] = {
+                        "title": title,
+                        "author": author,
+                        "url": f"https://www.bilibili.com/video/{bvid}",
+                    }
         date_key = _date_from_iso(report.get("created_at"))
         if date_key in date_set:
             daily[date_key]["reports"] += 1
@@ -526,6 +546,7 @@ def _report_metrics(date_keys: list[str]) -> dict[str, Any]:
     return {
         "daily": daily,
         "top_bvids": top_bvids,
+        "video_meta": video_meta,
         "summary": {
             "active_reports": active_reports,
             "archived_reports": archived_reports,
@@ -646,11 +667,22 @@ def _feature_trends(date_keys: list[str], feature_daily: dict[str, Counter[str]]
     ]
 
 
-def _top_bvids(*counters: Counter[str]) -> list[dict[str, Any]]:
+def _top_bvids(*counters: Counter[str], video_meta: dict[str, dict[str, str]] | None = None) -> list[dict[str, Any]]:
     merged: Counter[str] = Counter()
     for counter in counters:
         merged.update(counter)
-    return [{"name": name, "value": value} for name, value in merged.most_common(12)]
+    top_items = merged.most_common(12)
+    meta = _video_meta_for_bvids([name for name, _ in top_items], video_meta or {})
+    return [
+        {
+            "name": name,
+            "value": value,
+            "title": meta.get(name, {}).get("title", ""),
+            "author": meta.get(name, {}).get("author", ""),
+            "url": meta.get(name, {}).get("url", f"https://www.bilibili.com/video/{name}"),
+        }
+        for name, value in top_items
+    ]
 
 
 def _api_endpoint_items(counts: Counter[str], errors: Counter[str]) -> list[dict[str, Any]]:
@@ -670,6 +702,104 @@ def _api_endpoint_items(counts: Counter[str], errors: Counter[str]) -> list[dict
 
 def _counter_items(counter: Counter[str], limit: int | None = None) -> list[dict[str, Any]]:
     return [{"name": name, "value": value} for name, value in counter.most_common(limit)]
+
+
+def _video_meta_for_bvids(bvids: list[str], seed_meta: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+    cached = _read_video_meta_cache()
+    result: dict[str, dict[str, str]] = {}
+    missing: list[str] = []
+    for bvid in bvids:
+        seed = seed_meta.get(bvid) or {}
+        cached_item = cached.get(bvid) or {}
+        item = {
+            "title": str(seed.get("title") or cached_item.get("title") or "").strip(),
+            "author": str(seed.get("author") or cached_item.get("author") or "").strip(),
+            "url": f"https://www.bilibili.com/video/{bvid}",
+        }
+        result[bvid] = item
+        if not item["title"] or not item["author"]:
+            missing.append(bvid)
+
+    if missing:
+        with ThreadPoolExecutor(max_workers=min(4, len(missing))) as executor:
+            futures = {executor.submit(_fetch_video_meta, bvid): bvid for bvid in missing}
+            for future in as_completed(futures):
+                bvid = futures[future]
+                try:
+                    fetched = future.result()
+                except Exception:
+                    fetched = {}
+                if not fetched:
+                    continue
+                result[bvid] = {
+                    "title": fetched.get("title") or result[bvid].get("title", ""),
+                    "author": fetched.get("author") or result[bvid].get("author", ""),
+                    "url": f"https://www.bilibili.com/video/{bvid}",
+                }
+                cached[bvid] = {
+                    **result[bvid],
+                    "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                }
+        _write_video_meta_cache(cached)
+    return result
+
+
+def _fetch_video_meta(bvid: str) -> dict[str, str]:
+    if not BV_RE.fullmatch(bvid or ""):
+        return {}
+    response = requests.get(
+        f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}",
+        headers=BILIBILI_HEADERS,
+        timeout=(2, 6),
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("code") != 0:
+        return {}
+    data = payload.get("data") or {}
+    owner = data.get("owner") or {}
+    return {
+        "title": str(data.get("title") or "").strip(),
+        "author": str(owner.get("name") or "").strip(),
+    }
+
+
+def _read_video_meta_cache() -> dict[str, dict[str, str]]:
+    try:
+        raw = json.loads(OPS_VIDEO_META_CACHE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        bvid: value
+        for bvid, value in raw.items()
+        if isinstance(value, dict) and BV_RE.fullmatch(str(bvid or ""))
+    }
+
+
+def _write_video_meta_cache(cache: dict[str, dict[str, str]]) -> None:
+    try:
+        OPS_VIDEO_META_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        trimmed = dict(list(cache.items())[-300:])
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=str(OPS_VIDEO_META_CACHE_FILE.parent),
+            delete=False,
+        ) as tmp_file:
+            json.dump(trimmed, tmp_file, ensure_ascii=False, sort_keys=True)
+            tmp_name = tmp_file.name
+        os.replace(tmp_name, OPS_VIDEO_META_CACHE_FILE)
+        try:
+            if os.geteuid() == 0:
+                user = pwd.getpwnam("www")
+                os.chown(OPS_VIDEO_META_CACHE_FILE, user.pw_uid, user.pw_gid)
+            os.chmod(OPS_VIDEO_META_CACHE_FILE, 0o660)
+        except OSError:
+            pass
+    except Exception:
+        return
 
 
 def _read_dashboard_disk_cache(cache_key: str, now: float) -> dict[str, Any] | None:
@@ -894,6 +1024,22 @@ def _date_keys(days: int) -> list[str]:
     return [(start + timedelta(days=index)).isoformat() for index in range(days)]
 
 
+def _date_keys_for_range(start_value: str | None, end_value: str | None, days: int) -> list[str]:
+    today = datetime.now().astimezone().date()
+    start = _parse_date_key(start_value)
+    end = _parse_date_key(end_value)
+    if start or end:
+        end = end or today
+        start = start or (end - timedelta(days=_clamp_days(days) - 1))
+        if start > end:
+            start, end = end, start
+        if (end - start).days >= 180:
+            start = end - timedelta(days=179)
+        total_days = (end - start).days + 1
+        return [(start + timedelta(days=index)).isoformat() for index in range(total_days)]
+    return _date_keys(_clamp_days(days))
+
+
 def _empty_daily(date_key: str) -> dict[str, Any]:
     return {
         "date": date_key,
@@ -934,6 +1080,16 @@ def _parse_iso(value: Any) -> datetime | None:
         return None
 
 
+def _parse_date_key(value: Any):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
 def _percentile(values: list[float], percentile: int) -> float:
     if not values:
         return 0
@@ -964,7 +1120,7 @@ def _clamp_days(value: int) -> int:
         parsed = int(value)
     except (TypeError, ValueError):
         parsed = 30
-    return min(180, max(7, parsed))
+    return min(180, max(1, parsed))
 
 
 def _folder_inventory(path: Path) -> dict[str, Any]:
