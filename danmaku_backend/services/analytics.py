@@ -132,6 +132,7 @@ BOT_SOURCE_RULES = (
 )
 INTERNAL_HOSTS = {"danmu.liu-qi.cn", "dm.liu-qi.cn"}
 ANALYTICS_CACHE_SECONDS = 900
+OPS_DASHBOARD_CACHE_SCHEMA = "ops-v5-period-compare"
 VIDEO_META_FETCH_LIMIT = 6
 MAX_ACCESS_LOG_BYTES = 80 * 1024 * 1024
 OPS_VIDEO_META_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_video_meta.json")
@@ -420,10 +421,11 @@ def build_ops_dashboard(
 ) -> dict[str, Any]:
     date_keys = _date_keys_for_range(start_date, end_date, days)
     days = len(date_keys)
+    previous_date_keys = _previous_date_keys(date_keys)
     excluded_ips = _normalize_excluded_ips(exclude_ips)
     excluded_ip_hashes = {_ip_hash(ip_value) for ip_value in excluded_ips}
     filter_key = ",".join(sorted(excluded_ip_hashes)) or "none"
-    cache_key = f"ops:{date_keys[0]}:{date_keys[-1]}:exclude:{filter_key}"
+    cache_key = f"{OPS_DASHBOARD_CACHE_SCHEMA}:{date_keys[0]}:{date_keys[-1]}:exclude:{filter_key}"
     now = time.time()
     with _dashboard_cache_lock:
         cached = _dashboard_cache.get(cache_key)
@@ -435,21 +437,22 @@ def build_ops_dashboard(
             _dashboard_cache[cache_key] = (now, disk_cached)
         return disk_cached
 
-    access = _access_log_metrics(date_keys, excluded_ips)
-    events = _analytics_event_metrics(date_keys, excluded_ip_hashes)
-    excluded_analysis_ids = events["excluded_analysis_ids"]
-    artifacts = _artifact_metrics(date_keys, excluded_analysis_ids)
-    jobs = _job_metrics(date_keys, excluded_analysis_ids)
-    reports = _report_metrics(date_keys, excluded_analysis_ids)
+    current_metrics = _dashboard_metrics_for_dates(date_keys, excluded_ips, excluded_ip_hashes)
+    previous_metrics = _dashboard_metrics_for_dates(previous_date_keys, excluded_ips, excluded_ip_hashes)
+    access = current_metrics["access"]
+    events = current_metrics["events"]
+    artifacts = current_metrics["artifacts"]
+    jobs = current_metrics["jobs"]
+    reports = current_metrics["reports"]
+    daily = current_metrics["daily"]
+    previous_daily = previous_metrics["daily"]
+    previous_available = _period_has_data(previous_daily)
 
-    daily = _merge_daily(
-        date_keys,
-        access["daily"],
-        events["daily"],
-        artifacts["daily"],
-        jobs["daily"],
-        reports["daily"],
-        {},
+    kpis = _kpis(
+        daily,
+        jobs,
+        events,
+        previous_daily=previous_daily if previous_available else [],
     )
     dashboard = {
         "meta": {
@@ -457,6 +460,12 @@ def build_ops_dashboard(
             "days": days,
             "range_start": date_keys[0],
             "range_end": date_keys[-1],
+            "comparison": {
+                "range_start": previous_date_keys[0],
+                "range_end": previous_date_keys[-1],
+                "days": len(previous_date_keys),
+                "available": previous_available,
+            },
             "sources": [
                 "Nginx access log",
                 "SQLite artifact_records/jobs/analytics_events",
@@ -474,7 +483,7 @@ def build_ops_dashboard(
                 "按钮点击从前端埋点上线后开始累计。",
             ],
         },
-        "kpis": _kpis(daily, jobs, events),
+        "kpis": kpis,
         "daily": daily,
         "feature_actions": _counter_items_with_uv(access["feature_totals"], access["feature_visitors"], 16),
         "feature_trends": _feature_trends(date_keys, access["feature_daily"]),
@@ -531,6 +540,36 @@ def build_ops_dashboard(
         _dashboard_cache[cache_key] = (time.time(), dashboard)
     _write_dashboard_disk_cache(cache_key, dashboard)
     return dashboard
+
+
+def _dashboard_metrics_for_dates(
+    date_keys: list[str],
+    excluded_ips: set[str],
+    excluded_ip_hashes: set[str],
+) -> dict[str, Any]:
+    access = _access_log_metrics(date_keys, excluded_ips)
+    events = _analytics_event_metrics(date_keys, excluded_ip_hashes)
+    excluded_analysis_ids = events["excluded_analysis_ids"]
+    artifacts = _artifact_metrics(date_keys, excluded_analysis_ids)
+    jobs = _job_metrics(date_keys, excluded_analysis_ids)
+    reports = _report_metrics(date_keys, excluded_analysis_ids)
+    daily = _merge_daily(
+        date_keys,
+        access["daily"],
+        events["daily"],
+        artifacts["daily"],
+        jobs["daily"],
+        reports["daily"],
+        {},
+    )
+    return {
+        "access": access,
+        "events": events,
+        "artifacts": artifacts,
+        "jobs": jobs,
+        "reports": reports,
+        "daily": daily,
+    }
 
 
 def classify_request(method: str, path: str) -> tuple[str, str]:
@@ -1139,12 +1178,15 @@ def _merge_daily(
     return rows
 
 
-def _kpis(daily: list[dict[str, Any]], jobs: dict[str, Any], events: dict[str, Any]) -> dict[str, Any]:
+def _kpis(
+    daily: list[dict[str, Any]],
+    jobs: dict[str, Any],
+    events: dict[str, Any],
+    previous_daily: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     today = daily[-1] if daily else {}
     yesterday = daily[-2] if len(daily) >= 2 else _empty_daily("")
-    half = max(1, min(7, len(daily) // 2))
-    current_period = daily[-half:]
-    previous_period = daily[-(half * 2):-half] if len(daily) >= half * 2 else []
+    previous_daily = previous_daily or []
     fields = [
         ("pv", "PV"),
         ("uv", "UV"),
@@ -1156,29 +1198,23 @@ def _kpis(daily: list[dict[str, Any]], jobs: dict[str, Any], events: dict[str, A
         ("reports", "分享报告"),
     ]
     range_totals = {field: _sum_field(daily, field) for field, _ in fields}
+    previous_totals = {field: _sum_field(previous_daily, field) for field, _ in fields}
+    has_previous = _period_has_data(previous_daily)
+    range_compare = {
+        field: _period_comparison(range_totals.get(field, 0), previous_totals.get(field, 0), label, has_previous)
+        for field, label in fields
+    }
     return {
         "today": today,
         "yesterday": yesterday,
         "range_totals": range_totals,
-        "range_compare": {
-            field: {
-                "label": label,
-                "current": range_totals.get(field, 0),
-                "previous": None,
-                "diff": 0,
-                "pct": 0,
-                "scope": "range",
-            }
-            for field, label in fields
-        },
+        "previous_range_totals": previous_totals,
+        "range_compare": range_compare,
         "day_compare": {
             field: _comparison(today.get(field, 0), yesterday.get(field, 0), label)
             for field, label in fields
         },
-        "period_compare": {
-            field: _comparison(_sum_field(current_period, field), _sum_field(previous_period, field), label)
-            for field, label in fields
-        },
+        "period_compare": range_compare,
         "active_jobs": jobs["summary"]["active"],
         "latency": events["latency"],
     }
@@ -2142,8 +2178,43 @@ def _comparison(current: int | float, previous: int | float, label: str) -> dict
     return {"label": label, "current": current, "previous": previous, "diff": diff, "pct": pct}
 
 
+def _period_comparison(current: int | float, previous: int | float, label: str, has_previous: bool) -> dict[str, Any]:
+    item = _comparison(current, previous, label) if has_previous else {
+        "label": label,
+        "current": current or 0,
+        "previous": None,
+        "diff": 0,
+        "pct": 0,
+    }
+    item["scope"] = "period"
+    item["has_previous"] = bool(has_previous)
+    return item
+
+
 def _sum_field(rows: list[dict[str, Any]], field: str) -> int:
     return int(sum(row.get(field, 0) or 0 for row in rows))
+
+
+def _period_has_data(rows: list[dict[str, Any]]) -> bool:
+    fields = (
+        "all_hits",
+        "pv",
+        "uv",
+        "artifact_success",
+        "button_clicks",
+        "builtin_ai_calls",
+        "custom_ai_calls",
+        "analysis_jobs",
+        "reports",
+    )
+    return any(any(row.get(field, 0) or 0 for field in fields) for row in rows)
+
+
+def _previous_date_keys(date_keys: list[str]) -> list[str]:
+    start = datetime.fromisoformat(date_keys[0]).date()
+    previous_end = start - timedelta(days=1)
+    previous_start = previous_end - timedelta(days=len(date_keys) - 1)
+    return [(previous_start + timedelta(days=index)).isoformat() for index in range(len(date_keys))]
 
 
 def _clamp_days(value: int) -> int:

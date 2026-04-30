@@ -940,16 +940,16 @@
     }
 
     function deltaText(item) {
-      if (item.scope === 'range') return '当前范围合计';
+      if (item.has_previous === false) return '无上一周期数据';
       const diff = Number(item.diff || 0);
       const pct = Number(item.pct || 0);
-      if (diff === 0) return '较上一日持平';
+      if (diff === 0) return '较上一周期持平';
       const sign = diff > 0 ? '+' : '';
-      return `较上一日 ${sign}${formatNumber(diff)} (${sign}${pct}%)`;
+      return `较上一周期 ${sign}${formatNumber(diff)} (${sign}${pct}%)`;
     }
 
     function deltaClass(item) {
-      if (item.scope === 'range') return '';
+      if (item.has_previous === false) return '';
       const diff = Number(item.diff || 0);
       if (diff > 0) return 'up';
       if (diff < 0) return 'down';
@@ -994,8 +994,14 @@
         ['analysis_jobs', 'AI任务'],
         ['reports', '报告']
       ];
-      $('#periodCompare').innerHTML = fields.map(([key, label]) => {
-        const item = compare[key] || { current: 0, diff: 0, pct: 0 };
+      const rows = fields
+        .map(([key, label]) => ({ key, label, item: compare[key] || null }))
+        .filter((row) => row.item && row.item.has_previous !== false);
+      if (!rows.length) {
+        $('#periodCompare').innerHTML = '<div class="empty">上一等长周期暂无数据</div>';
+        return;
+      }
+      $('#periodCompare').innerHTML = rows.map(({ label, item }) => {
         const sign = Number(item.diff || 0) > 0 ? '+' : '';
         return `
           <div class="comparison-item">
