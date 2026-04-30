@@ -300,6 +300,19 @@
       min-height: 260px;
     }
 
+    .bot-chart-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .bot-chart-grid .chart {
+      border-right: 1px solid var(--line-soft);
+    }
+
+    .bot-chart-grid .chart:last-child {
+      border-right: 0;
+    }
+
     .table-wrap {
       min-width: 0;
       overflow-x: auto;
@@ -370,7 +383,22 @@
     }
 
     .video-title-cell {
-      max-width: 520px;
+      max-width: 760px;
+    }
+
+    .bvid-table th:nth-child(1),
+    .bvid-table td:nth-child(1) {
+      width: 180px;
+    }
+
+    .bvid-table th:nth-child(2),
+    .bvid-table td:nth-child(2) {
+      width: 46%;
+    }
+
+    .bvid-table th:nth-child(3),
+    .bvid-table td:nth-child(3) {
+      width: 220px;
     }
 
     .comparison {
@@ -429,8 +457,18 @@
 
       .dashboard-grid,
       .two-grid,
-      .three-grid {
+      .three-grid,
+      .bot-chart-grid {
         grid-template-columns: 1fr;
+      }
+
+      .bot-chart-grid .chart {
+        border-right: 0;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .bot-chart-grid .chart:last-child {
+        border-bottom: 0;
       }
     }
 
@@ -514,7 +552,7 @@
         <div class="section-head">
           <div>
             <h1>今日概览</h1>
-            <p id="scopeText">PV/UV 已排除明显爬虫；下载、API 与任务数据按服务器记录汇总。</p>
+            <p id="scopeText">PV/UV 已排除明显爬虫；按钮点击、AI 模式和分享行为按运营口径汇总。</p>
           </div>
         </div>
         <div class="grid kpi-grid" id="kpiGrid"></div>
@@ -525,8 +563,8 @@
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>流量与核心动作</h3>
-              <span>PV、UV、API 调用、下载、解析成功</span>
+              <h3>运营趋势</h3>
+              <span>PV、UV、解析成功、按钮点击、AI 与分享</span>
             </div>
           </div>
           <div id="trafficChart" class="chart"></div>
@@ -555,11 +593,17 @@
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>下载结构</h3>
-              <span>CSV、TXT 与插件包</span>
+              <h3>关键按钮点击</h3>
+              <span>从前端埋点记录真实点击</span>
             </div>
           </div>
-          <div id="downloadChart" class="chart"></div>
+          <div id="actionChart" class="chart small"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>按钮/链接</th><th class="numeric">点击</th></tr></thead>
+              <tbody id="clickTable"></tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -567,32 +611,26 @@
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>AI 任务</h3>
-              <span>队列、运行、成功与失败</span>
+              <h3>AI 模式对比</h3>
+              <span>内置 AI 与自主模型材料准备调用</span>
             </div>
           </div>
-          <div id="jobChart" class="chart small"></div>
+          <div id="aiModeChart" class="chart small"></div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>任务</th><th>状态</th><th class="numeric">数量</th></tr></thead>
-              <tbody id="jobTable"></tbody>
+              <thead><tr><th>分析类型</th><th class="numeric">调用</th></tr></thead>
+              <tbody id="aiModeTable"></tbody>
             </table>
           </div>
         </div>
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>API 与错误</h3>
-              <span>状态码、接口调用与错误率</span>
+              <h3>浏览器分布</h3>
+              <span>用户代理粗分类</span>
             </div>
           </div>
-          <div id="statusChart" class="chart small"></div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>接口</th><th class="numeric">调用</th><th class="numeric">错误率</th></tr></thead>
-              <tbody id="apiTable"></tbody>
-            </table>
-          </div>
+          <div id="uaChart" class="chart small"></div>
         </div>
       </section>
 
@@ -628,20 +666,20 @@
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>IP 来源</h3>
-              <span>按聚合网段展示</span>
+              <h3>地区分布</h3>
+              <span>按聚合网段近似归类</span>
             </div>
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>网段</th><th class="numeric">次数</th></tr></thead>
-              <tbody id="ipTable"></tbody>
+              <thead><tr><th>地区</th><th class="numeric">次数</th></tr></thead>
+              <tbody id="regionTable"></tbody>
             </table>
           </div>
         </div>
       </section>
 
-      <section class="section grid two-grid">
+      <section class="section">
         <div class="panel">
           <div class="panel-head">
             <div>
@@ -650,20 +688,32 @@
             </div>
           </div>
           <div class="table-wrap">
-            <table>
+            <table class="bvid-table">
               <thead><tr><th>BV号</th><th>视频标题</th><th>UP主</th><th>视频</th><th class="numeric">热度</th></tr></thead>
               <tbody id="bvidTable"></tbody>
             </table>
           </div>
         </div>
+      </section>
+
+      <section class="section">
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>浏览器分布</h3>
-              <span>用户代理粗分类</span>
+              <h3>Bot 与蜘蛛来源</h3>
+              <span>按搜索引擎、AI 公司与脚本来源拆分</span>
             </div>
           </div>
-          <div id="uaChart" class="chart small"></div>
+          <div class="grid bot-chart-grid">
+            <div id="botFamilyChart" class="chart small"></div>
+            <div id="botSourceChart" class="chart small"></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>来源</th><th class="numeric">次数</th></tr></thead>
+              <tbody id="botTable"></tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -671,14 +721,32 @@
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>存储与产物</h3>
-              <span>下载文件、字幕、报告和插件包</span>
+              <h3>技术健康</h3>
+              <span>状态码、接口错误率和 404 情况</span>
+            </div>
+          </div>
+          <div id="statusChart" class="chart small"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>接口</th><th class="numeric">调用</th><th class="numeric">错误率</th></tr></thead>
+              <tbody id="apiTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section grid two-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>AI 任务健康</h3>
+              <span>队列、运行、成功与失败</span>
             </div>
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>对象</th><th class="numeric">数量</th><th class="numeric">体积</th><th>最新变更</th></tr></thead>
-              <tbody id="inventoryTable"></tbody>
+              <thead><tr><th>任务</th><th>状态</th><th class="numeric">数量</th></tr></thead>
+              <tbody id="jobTable"></tbody>
             </table>
           </div>
         </div>
@@ -762,12 +830,12 @@
       const fields = [
         ['pv', '今日 PV'],
         ['uv', '今日 UV'],
-        ['downloads', '文件下载'],
         ['artifact_success', '解析成功'],
-        ['api_calls', 'API 调用'],
+        ['button_clicks', '按钮点击'],
+        ['builtin_ai_calls', '内置 AI'],
+        ['custom_ai_calls', '自主模型'],
         ['analysis_jobs', 'AI 任务'],
-        ['reports', '分享报告'],
-        ['errors', '错误请求']
+        ['reports', '分享报告']
       ];
       $('#kpiGrid').innerHTML = fields.map(([key, label]) => {
         const item = compare[key] || { current: 0, diff: 0, pct: 0 };
@@ -788,12 +856,12 @@
       const fields = [
         ['pv', 'PV'],
         ['uv', 'UV'],
-        ['downloads', '下载'],
-        ['analysis_jobs', 'AI任务'],
-        ['api_calls', 'API'],
         ['artifact_success', '解析'],
-        ['reports', '报告'],
-        ['errors', '错误']
+        ['button_clicks', '点击'],
+        ['builtin_ai_calls', '内置AI'],
+        ['custom_ai_calls', '自主模型'],
+        ['analysis_jobs', 'AI任务'],
+        ['reports', '报告']
       ];
       $('#periodCompare').innerHTML = fields.map(([key, label]) => {
         const item = compare[key] || { current: 0, diff: 0, pct: 0 };
@@ -812,9 +880,11 @@
       const series = [
         ['PV', 'pv'],
         ['UV', 'uv'],
-        ['API调用', 'api_calls'],
-        ['文件下载', 'downloads'],
-        ['解析成功', 'artifact_success']
+        ['解析成功', 'artifact_success'],
+        ['按钮点击', 'button_clicks'],
+        ['内置AI', 'builtin_ai_calls'],
+        ['自主模型', 'custom_ai_calls'],
+        ['分享报告', 'reports']
       ].map(([name, key]) => ({
         name,
         type: 'line',
@@ -829,7 +899,7 @@
         grid: { left: 42, right: 18, top: 52, bottom: 34 },
         xAxis: { type: 'category', data: dates, boundaryGap: false, axisLine: { lineStyle: { color: '#dfe6ea' } } },
         yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
-        series
+        series: series.length ? series : [{ name: '暂无 AI 调用', type: 'bar', data: dates.map(() => 0) }]
       });
     }
 
@@ -853,33 +923,35 @@
       });
     }
 
-    function renderDownloadChart(data) {
-      const rows = data.download_breakdown || [];
-      setChartOption('downloadChart', {
+    function renderActionChart(data) {
+      const dates = data.daily.map((item) => item.date.slice(5));
+      const series = (data.click_trends || []).map((item) => ({
+        name: item.name,
+        type: 'bar',
+        stack: 'clicks',
+        data: item.data || []
+      }));
+      setChartOption('actionChart', {
         color: palette,
-        tooltip: { trigger: 'item' },
-        legend: { bottom: 8, textStyle: { color: '#66727d' } },
-        series: [{
-          type: 'pie',
-          radius: ['42%', '70%'],
-          center: ['50%', '45%'],
-          avoidLabelOverlap: true,
-          label: { formatter: '{b}: {c}' },
-          data: rows.length ? rows : [{ name: '暂无下载', value: 0 }]
-        }]
+        tooltip: { trigger: 'axis' },
+        legend: { top: 4, type: 'scroll', textStyle: { color: '#66727d' } },
+        grid: { left: 40, right: 16, top: 52, bottom: 28 },
+        xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#dfe6ea' } } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
+        series: series.length ? series : [{ name: '暂无点击', type: 'bar', data: dates.map(() => 0) }]
       });
     }
 
-    function renderJobChart(data) {
+    function renderAiModeChart(data) {
       const dates = data.daily.map((item) => item.date.slice(5));
-      const trends = (data.jobs.trends || []);
+      const trends = (data.ai_mode_trends || []);
       const series = trends.map((item) => ({
         name: item.name,
         type: 'bar',
-        stack: 'jobs',
+        stack: 'ai-mode',
         data: item.data || []
       }));
-      setChartOption('jobChart', {
+      setChartOption('aiModeChart', {
         color: palette,
         tooltip: { trigger: 'axis' },
         legend: { top: 4, type: 'scroll', textStyle: { color: '#66727d' } },
@@ -916,6 +988,46 @@
           center: ['50%', '43%'],
           label: { formatter: '{b}: {c}' },
           data: (data.top_user_agents || []).map((item) => ({ name: item.name, value: item.value }))
+        }]
+      });
+    }
+
+    function renderBotChart(data) {
+      const dates = data.daily.map((item) => item.date.slice(5));
+      const familySeries = ((data.bot_traffic || {}).family_trends || []).map((item) => ({
+        name: item.name,
+        type: 'bar',
+        stack: 'bot-family',
+        data: item.data || []
+      }));
+      setChartOption('botFamilyChart', {
+        color: ['#6955b8', '#0098c8', '#a86f16', '#4d6f87'],
+        tooltip: { trigger: 'axis' },
+        legend: { top: 4, type: 'scroll', textStyle: { color: '#66727d' } },
+        grid: { left: 40, right: 16, top: 52, bottom: 28 },
+        xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#dfe6ea' } } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
+        series: familySeries.length ? familySeries : [{ name: '暂无 Bot', type: 'bar', data: dates.map(() => 0) }]
+      });
+
+      const sources = ((data.bot_traffic || {}).summary || []).slice(0, 10).reverse();
+      setChartOption('botSourceChart', {
+        color: ['#0098c8'],
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 126, right: 28, top: 24, bottom: 30 },
+        xAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
+        yAxis: {
+          type: 'category',
+          data: sources.map((item) => item.name),
+          axisLine: { lineStyle: { color: '#dfe6ea' } },
+          axisLabel: { color: '#66727d' }
+        },
+        series: [{
+          name: '来源次数',
+          type: 'bar',
+          data: sources.map((item) => item.value || 0),
+          label: { show: true, position: 'right', color: '#66727d' },
+          barMaxWidth: 18
         }]
       });
     }
@@ -960,7 +1072,9 @@
     function renderTables(data) {
       renderSimpleTable('#pageTable', data.top_pages, '页面', 'PV');
       renderSimpleTable('#referrerTable', data.top_referrers, '来源', '次数');
-      renderSimpleTable('#ipTable', data.top_ip_segments, '网段', '次数');
+      renderSimpleTable('#regionTable', data.top_regions, '地区', '次数');
+      renderSimpleTable('#clickTable', data.click_actions, '按钮/链接', '点击');
+      renderSimpleTable('#aiModeTable', data.ai_mode_details, '分析类型', '调用');
       renderBvidTable(data.top_bvids);
 
       $('#apiTable').innerHTML = (data.api_endpoints || []).length
@@ -983,23 +1097,10 @@
           `).join('')
         : '<tr><td colspan="3"><div class="empty">暂无任务</div></td></tr>';
 
-      const inv = data.inventory || {};
-      const inventoryRows = [
-        ['下载目录', inv.downloads],
-        ['CSV 文件', inv.csv],
-        ['TXT 文件', inv.txt],
-        ['报告文件', inv.reports],
-        ['字幕文件', inv.subtitles],
-        ['插件包', inv.plugin_zip ? { count: inv.plugin_zip.exists ? 1 : 0, size_bytes: inv.plugin_zip.size_bytes, newest_mtime: inv.plugin_zip.mtime } : null]
+      const botRows = [
+        ...(((data.bot_traffic || {}).summary || []).map((item) => ({ name: item.name, value: item.value })))
       ];
-      $('#inventoryTable').innerHTML = inventoryRows.map(([name, item]) => `
-        <tr>
-          <td>${name}</td>
-          <td class="numeric">${formatNumber((item && item.count) || 0)}</td>
-          <td class="numeric">${formatBytes((item && item.size_bytes) || 0)}</td>
-          <td>${escapeHtml((item && item.newest_mtime) || '')}</td>
-        </tr>
-      `).join('');
+      renderSimpleTable('#botTable', botRows, 'Bot 来源', '次数');
 
       $('#errorTable').innerHTML = (data.recent_errors || []).length
         ? data.recent_errors.map((item) => `
@@ -1016,7 +1117,7 @@
       const latency = data.latency || {};
       const active = data.kpis.active_jobs || {};
       $('#freshnessText').textContent = `更新 ${formatDateTime(meta.generated_at)} · p95 ${formatMs(latency.p95_ms)} · 队列 ${formatNumber(active.queued || 0)}/${formatNumber(active.running || 0)}`;
-      $('#scopeText').textContent = `${meta.range_start} 至 ${meta.range_end}，访问日志 ${formatBytes((meta.access_log || {}).size_bytes || 0)}，埋点样本 ${formatNumber((latency.events || 0))} 条。`;
+      $('#scopeText').textContent = `${meta.range_start} 至 ${meta.range_end}，访问日志 ${formatBytes((meta.access_log || {}).size_bytes || 0)}，按钮点击 ${formatNumber((data.daily || []).reduce((sum, item) => sum + Number(item.button_clicks || 0), 0))} 次。`;
     }
 
     function render(data) {
@@ -1025,10 +1126,11 @@
       renderPeriodCompare(data);
       renderTrafficChart(data);
       renderFeatureChart(data);
-      renderDownloadChart(data);
-      renderJobChart(data);
+      renderActionChart(data);
+      renderAiModeChart(data);
       renderStatusChart(data);
       renderUaChart(data);
+      renderBotChart(data);
       renderTables(data);
     }
 

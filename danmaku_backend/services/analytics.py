@@ -43,10 +43,112 @@ BOT_RE = re.compile(
     r"bot|spider|crawl|slurp|bytespider|bingpreview|curl|wget|python-requests|httpclient|headless|go-http-client",
     re.IGNORECASE,
 )
+AI_BOT_RE = re.compile(
+    r"gptbot|chatgpt|oai-searchbot|claudebot|anthropic|perplexitybot|bytespider|ccbot|google-extended|"
+    r"applebot-extended|amazonbot|meta-externalagent|diffbot|youbot|omgili",
+    re.IGNORECASE,
+)
+SEARCH_BOT_RE = re.compile(
+    r"googlebot|bingbot|baiduspider|sogou|360spider|yisouspider|duckduckbot|yandexbot|petalbot|slurp",
+    re.IGNORECASE,
+)
+TOOL_BOT_RE = re.compile(
+    r"curl|wget|python-requests|httpclient|headless|go-http-client|okhttp|postman|node-fetch",
+    re.IGNORECASE,
+)
+AI_BOT_TOKENS = (
+    "gptbot",
+    "chatgpt",
+    "oai-searchbot",
+    "claudebot",
+    "anthropic",
+    "perplexitybot",
+    "bytespider",
+    "ccbot",
+    "google-extended",
+    "applebot-extended",
+    "amazonbot",
+    "meta-externalagent",
+    "diffbot",
+    "youbot",
+    "omgili",
+)
+SEARCH_BOT_TOKENS = (
+    "googlebot",
+    "bingbot",
+    "baiduspider",
+    "sogou",
+    "360spider",
+    "yisouspider",
+    "duckduckbot",
+    "yandexbot",
+    "petalbot",
+    "slurp",
+)
+TOOL_BOT_TOKENS = (
+    "curl",
+    "wget",
+    "python-requests",
+    "httpclient",
+    "headless",
+    "go-http-client",
+    "okhttp",
+    "postman",
+    "node-fetch",
+)
+GENERIC_BOT_TOKENS = ("bot", "spider", "crawl", "bingpreview")
+ALL_BOT_TOKENS = AI_BOT_TOKENS + SEARCH_BOT_TOKENS + TOOL_BOT_TOKENS + GENERIC_BOT_TOKENS
+BOT_SOURCE_RULES = (
+    ("AI Bot", "OpenAI GPTBot", ("gptbot",)),
+    ("AI Bot", "OpenAI ChatGPT", ("chatgpt-user", "chatgpt")),
+    ("AI Bot", "OpenAI SearchBot", ("oai-searchbot",)),
+    ("AI Bot", "Anthropic ClaudeBot", ("claudebot", "anthropic")),
+    ("AI Bot", "PerplexityBot", ("perplexitybot",)),
+    ("AI Bot", "ByteDance Bytespider", ("bytespider",)),
+    ("AI Bot", "Common Crawl CCBot", ("ccbot",)),
+    ("AI Bot", "Google-Extended", ("google-extended",)),
+    ("AI Bot", "Applebot-Extended", ("applebot-extended",)),
+    ("AI Bot", "Amazonbot", ("amazonbot",)),
+    ("AI Bot", "Meta External Agent", ("meta-externalagent",)),
+    ("AI Bot", "Diffbot", ("diffbot",)),
+    ("AI Bot", "YouBot", ("youbot",)),
+    ("AI Bot", "Omgili", ("omgili",)),
+    ("搜索引擎蜘蛛", "Googlebot", ("googlebot",)),
+    ("搜索引擎蜘蛛", "Bingbot", ("bingbot", "bingpreview")),
+    ("搜索引擎蜘蛛", "Baiduspider", ("baiduspider",)),
+    ("搜索引擎蜘蛛", "Sogou Spider", ("sogou",)),
+    ("搜索引擎蜘蛛", "360Spider", ("360spider",)),
+    ("搜索引擎蜘蛛", "YisouSpider", ("yisouspider",)),
+    ("搜索引擎蜘蛛", "DuckDuckBot", ("duckduckbot",)),
+    ("搜索引擎蜘蛛", "YandexBot", ("yandexbot",)),
+    ("搜索引擎蜘蛛", "PetalBot", ("petalbot",)),
+    ("搜索引擎蜘蛛", "Yahoo Slurp", ("slurp",)),
+    ("工具/脚本", "curl/wget", ("curl", "wget")),
+    ("工具/脚本", "Python requests", ("python-requests",)),
+    ("工具/脚本", "Go HTTP Client", ("go-http-client",)),
+    ("工具/脚本", "Headless Browser", ("headless",)),
+    ("工具/脚本", "HTTP Client", ("httpclient", "okhttp", "postman", "node-fetch")),
+    ("其他 Bot", "其他 Bot", GENERIC_BOT_TOKENS),
+)
 INTERNAL_HOSTS = {"danmu.liu-qi.cn", "dm.liu-qi.cn"}
 ANALYTICS_CACHE_SECONDS = 300
 MAX_ACCESS_LOG_BYTES = 80 * 1024 * 1024
 OPS_VIDEO_META_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_video_meta.json")
+OPS_IP_REGION_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_ip_region_cache.json")
+ACCESS_LOG_MONTHS = {
+    "Jan": "01",
+    "Feb": "02",
+    "Mar": "03",
+    "Apr": "04",
+    "May": "05",
+    "Jun": "06",
+    "Jul": "07",
+    "Aug": "08",
+    "Sep": "09",
+    "Oct": "10",
+    "Nov": "11",
+    "Dec": "12",
+}
 
 FEATURE_LABELS = {
     "page_home": "首页",
@@ -68,10 +170,39 @@ FEATURE_LABELS = {
     "job_poll": "任务查询",
     "video_cover": "封面代理",
     "api_other": "其他 API",
+    "ops_event": "运营埋点",
     "not_found": "404/异常访问",
     "seo_file": "SEO文件",
     "static_asset": "静态资源",
     "other": "其他",
+}
+
+CLICK_EVENT_LABELS = {
+    "parse_danmaku_click": "解析弹幕按钮",
+    "csv_download_click": "下载 CSV",
+    "txt_download_click": "下载 TXT",
+    "plugin_github_click": "插件 GitHub 链接",
+    "plugin_download_click": "下载插件包",
+    "custom_api_key_click": "获取 API Key",
+    "custom_api_test_click": "自主模型测试",
+    "custom_api_save_click": "自主模型保存",
+    "custom_api_clear_click": "自主模型清空",
+    "builtin_content_analysis_click": "内置内容分析",
+    "builtin_deep_analysis_click": "内置深度分析",
+    "custom_content_analysis_click": "自主内容分析",
+    "custom_deep_analysis_click": "自主深度分析",
+    "subtitle_upload_button_click": "上传字幕按钮",
+    "subtitle_file_selected": "选择字幕文件",
+    "share_report_click": "分享报告按钮",
+    "share_copy_link_click": "复制分享链接",
+    "share_card_download_click": "下载分享卡片",
+}
+
+AI_MODE_LABELS = {
+    "content_analysis": ("内置 AI", "内置内容分析", "builtin_ai_calls"),
+    "deep_analysis": ("内置 AI", "内置深度分析", "builtin_ai_calls"),
+    "custom_content": ("自主模型", "自主内容分析", "custom_ai_calls"),
+    "custom_deep": ("自主模型", "自主深度分析", "custom_ai_calls"),
 }
 
 PAGE_CATEGORIES = {"page_home", "page_result", "page_faq", "page_plugin"}
@@ -89,12 +220,55 @@ API_CATEGORIES = {
     "video_cover",
     "api_other",
 }
-SKIP_ANALYTICS_CATEGORIES = {"dashboard", "ops_api", "static_asset", "health", "logs"}
+SKIP_ANALYTICS_CATEGORIES = {"dashboard", "ops_api", "ops_event", "static_asset", "health", "logs"}
 
 _dashboard_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _dashboard_cache_lock = threading.Lock()
 _analytics_db_ready = False
 _analytics_db_lock = threading.Lock()
+
+
+def record_client_event(flask_request, event_name: str, metadata: dict[str, Any] | None = None) -> bool:
+    event_name = str(event_name or "").strip()
+    if event_name not in CLICK_EVENT_LABELS:
+        return False
+
+    _ensure_analytics_db()
+    metadata = metadata if isinstance(metadata, dict) else {}
+    ip_value = _client_ip(flask_request.headers, flask_request.remote_addr)
+    now = datetime.now().astimezone()
+    ua = flask_request.headers.get("User-Agent", "")
+    bvid = _normalize_bvid(str(metadata.get("bvid") or ""))
+    analysis_id = str(metadata.get("analysis_id") or "").strip()
+    if not re.fullmatch(r"[0-9a-f]{32}", analysis_id):
+        analysis_id = None
+    with connect_state_db(STATE_DB_PATH) as conn:
+        conn.execute(
+            """
+            INSERT INTO analytics_events (
+                ts, date, method, path, category, status, duration_ms, ip_hash,
+                ip_segment, user_agent_family, is_bot, referer_domain, bvid, analysis_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                now.isoformat(timespec="seconds"),
+                now.date().isoformat(),
+                "EVENT",
+                f"/ops-event/{event_name}",
+                f"click_{event_name}",
+                200,
+                None,
+                _ip_hash(ip_value),
+                _ip_segment(ip_value),
+                _user_agent_family(ua),
+                1 if _is_bot(ua) else 0,
+                _referer_domain(flask_request.headers.get("Referer", "")),
+                bvid,
+                analysis_id,
+            ),
+        )
+    return True
 
 
 def record_request_event(flask_request, response, duration_ms: float | None = None) -> None:
@@ -157,10 +331,17 @@ def build_ops_dashboard(days: int = 30, start_date: str | None = None, end_date:
     artifacts = _artifact_metrics(date_keys)
     jobs = _job_metrics(date_keys)
     reports = _report_metrics(date_keys)
-    inventory = _inventory_metrics()
     app_errors = _app_log_errors(date_keys)
 
-    daily = _merge_daily(date_keys, access["daily"], artifacts["daily"], jobs["daily"], reports["daily"], app_errors["daily"])
+    daily = _merge_daily(
+        date_keys,
+        access["daily"],
+        events["daily"],
+        artifacts["daily"],
+        jobs["daily"],
+        reports["daily"],
+        app_errors["daily"],
+    )
     dashboard = {
         "meta": {
             "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -171,27 +352,32 @@ def build_ops_dashboard(days: int = 30, start_date: str | None = None, end_date:
                 "Nginx access log",
                 "SQLite artifact_records/jobs/analytics_events",
                 "reports JSON",
-                "runtime file inventory",
                 "app.log errors",
             ],
             "access_log": _file_freshness(ACCESS_LOG_FILE),
             "app_log": _file_freshness(LOG_FILE),
             "notes": [
                 "PV/UV 默认排除明显爬虫与命令行探测流量。",
-                "IP 只展示聚合网段，不返回完整原始 IP。",
-                "接口耗时从本次埋点上线后开始累计。",
+                "地区来源基于聚合网段做近似归类，不返回完整原始 IP。",
+                "按钮点击从前端埋点上线后开始累计。",
             ],
         },
         "kpis": _kpis(daily, jobs, events),
         "daily": daily,
         "feature_trends": _feature_trends(date_keys, access["feature_daily"]),
+        "click_actions": events["click_actions"],
+        "click_trends": events["click_trends"],
+        "ai_mode_breakdown": _counter_items(access["ai_modes"]),
+        "ai_mode_details": _counter_items(access["ai_mode_details"]),
+        "ai_mode_trends": _counter_trends(date_keys, access["ai_mode_daily"], ["内置 AI", "自主模型"]),
         "download_breakdown": _counter_items(access["download_breakdown"]),
         "status_codes": _counter_items(access["status_codes"]),
         "api_endpoints": _api_endpoint_items(access["api_endpoints"], access["api_endpoint_errors"]),
         "top_pages": _counter_items(access["top_pages"], 10),
         "top_referrers": _counter_items(access["top_referrers"], 10),
-        "top_ip_segments": _counter_items(access["top_ip_segments"], 12),
+        "top_regions": access["top_regions"],
         "top_user_agents": _counter_items(access["top_user_agents"], 8),
+        "bot_traffic": access["bot_traffic"],
         "top_bvids": _top_bvids(
             access["top_bvids"],
             artifacts["top_bvids"],
@@ -201,7 +387,6 @@ def build_ops_dashboard(days: int = 30, start_date: str | None = None, end_date:
         "jobs": jobs["summary"],
         "artifacts": artifacts["summary"],
         "reports": reports["summary"],
-        "inventory": inventory,
         "latency": events["latency"],
         "recent_errors": app_errors["recent"],
     }
@@ -219,6 +404,8 @@ def classify_request(method: str, path: str) -> tuple[str, str]:
         return "dashboard", "后台看板"
     if path == "/api/v2/ops-dashboard":
         return "ops_api", "看板接口"
+    if path == "/api/v2/ops-events":
+        return "ops_event", FEATURE_LABELS["ops_event"]
     if path == "/health":
         return "health", "健康检查"
     if path == "/logs":
@@ -297,6 +484,14 @@ def _access_log_metrics(date_keys: list[str]) -> dict[str, Any]:
     status_codes: Counter[str] = Counter()
     api_endpoints: Counter[str] = Counter()
     api_endpoint_errors: Counter[str] = Counter()
+    ai_modes: Counter[str] = Counter()
+    ai_mode_details: Counter[str] = Counter()
+    ai_mode_daily: dict[str, Counter[str]] = defaultdict(Counter)
+    bot_families: Counter[str] = Counter()
+    bot_sources: Counter[str] = Counter()
+    bot_paths: Counter[str] = Counter()
+    bot_daily: dict[str, Counter[str]] = defaultdict(Counter)
+    bot_source_daily: dict[str, Counter[str]] = defaultdict(Counter)
 
     for path in _access_log_paths():
         for row in _iter_access_log(path):
@@ -311,7 +506,14 @@ def _access_log_metrics(date_keys: list[str]) -> dict[str, Any]:
             day["bytes"] += row["bytes"]
             status_codes[str(status)] += 1
             if is_bot:
+                bot_family = row["bot_family"]
+                bot_source = row["bot_source"]
                 day["bot_hits"] += 1
+                bot_families[bot_family] += 1
+                bot_sources[bot_source] += 1
+                bot_daily[date_key][bot_family] += 1
+                bot_source_daily[date_key][bot_source] += 1
+                bot_paths[f"{bot_source} · {label}"] += 1
             if status >= 400:
                 day["errors"] += 1
             if category in API_CATEGORIES:
@@ -327,17 +529,25 @@ def _access_log_metrics(date_keys: list[str]) -> dict[str, Any]:
             is_operator_or_asset = category in SKIP_ANALYTICS_CATEGORIES or category == "seo_file"
             if not is_bot and not is_operator_or_asset:
                 feature_daily[date_key][label] += 1
+                if category in AI_MODE_LABELS and status < 500:
+                    mode, detail, field = AI_MODE_LABELS[category]
+                    day["ai_calls"] += 1
+                    day[field] += 1
+                    ai_modes[mode] += 1
+                    ai_mode_details[detail] += 1
+                    ai_mode_daily[date_key][mode] += 1
                 if category in PAGE_CATEGORIES and row["method"] == "GET" and status < 500:
                     day["pv"] += 1
-                    visitors[date_key].add(row["ip_hash"])
+                    visitors[date_key].add(_ip_hash(row["ip"]))
                     top_pages[label] += 1
                 if category in API_CATEGORIES and status < 500:
-                    top_ip_segments[row["ip_segment"]] += 1
+                    top_ip_segments[_ip_segment(row["ip"])] += 1
                 if category in PAGE_CATEGORIES:
-                    top_ip_segments[row["ip_segment"]] += 1
-                    top_user_agents[row["user_agent_family"]] += 1
-                if row["referer_domain"]:
-                    top_referrers[row["referer_domain"]] += 1
+                    top_ip_segments[_ip_segment(row["ip"])] += 1
+                    top_user_agents[_user_agent_family(row["ua"])] += 1
+                referer_domain = _referer_domain(row["referer"])
+                if referer_domain:
+                    top_referrers[referer_domain] += 1
                 if row["bvid"]:
                     top_bvids[row["bvid"]] += 1
 
@@ -355,14 +565,32 @@ def _access_log_metrics(date_keys: list[str]) -> dict[str, Any]:
         "status_codes": status_codes,
         "api_endpoints": api_endpoints,
         "api_endpoint_errors": api_endpoint_errors,
+        "ai_modes": ai_modes,
+        "ai_mode_details": ai_mode_details,
+        "ai_mode_daily": ai_mode_daily,
+        "top_regions": _region_items_from_segments(top_ip_segments, 12),
+        "bot_traffic": {
+            "families": _counter_items(bot_families, 8),
+            "summary": _counter_items(bot_sources, 12),
+            "trends": _counter_trends(
+                date_keys,
+                bot_source_daily,
+                ["Googlebot", "Bingbot", "Baiduspider", "Sogou Spider", "OpenAI GPTBot", "Anthropic ClaudeBot", "ByteDance Bytespider"],
+            ),
+            "family_trends": _counter_trends(date_keys, bot_daily, ["AI Bot", "搜索引擎蜘蛛", "工具/脚本", "其他 Bot"]),
+            "paths": _counter_items(bot_paths, 10),
+        },
     }
 
 
 def _analytics_event_metrics(date_keys: list[str]) -> dict[str, Any]:
     _ensure_analytics_db()
     date_set = set(date_keys)
+    daily = {key: {"button_clicks": 0} for key in date_keys}
     durations: list[float] = []
     durations_by_category: dict[str, list[float]] = defaultdict(list)
+    clicks: Counter[str] = Counter()
+    click_daily: dict[str, Counter[str]] = defaultdict(Counter)
     event_count = 0
     with connect_state_db(STATE_DB_PATH) as conn:
         rows = conn.execute(
@@ -371,20 +599,25 @@ def _analytics_event_metrics(date_keys: list[str]) -> dict[str, Any]:
             FROM analytics_events
             WHERE date >= ? AND date <= ?
               AND is_bot = 0
-              AND duration_ms IS NOT NULL
             """,
             (date_keys[0], date_keys[-1]),
         ).fetchall()
     for row in rows:
         if row["date"] not in date_set:
             continue
-        value = float(row["duration_ms"] or 0)
-        if value <= 0:
+        category = str(row["category"] or "")
+        if category.startswith("click_"):
+            label = _click_event_label(category)
+            clicks[label] += 1
+            click_daily[row["date"]][label] += 1
+            daily[row["date"]]["button_clicks"] += 1
             continue
-        event_count += 1
-        durations.append(value)
-        label = FEATURE_LABELS.get(row["category"], row["category"])
-        durations_by_category[label].append(value)
+        value = float(row["duration_ms"] or 0)
+        if value > 0:
+            event_count += 1
+            durations.append(value)
+            label = FEATURE_LABELS.get(category, category)
+            durations_by_category[label].append(value)
     by_category = [
         {
             "name": name,
@@ -395,6 +628,24 @@ def _analytics_event_metrics(date_keys: list[str]) -> dict[str, Any]:
         for name, values in sorted(durations_by_category.items(), key=lambda item: len(item[1]), reverse=True)
     ][:10]
     return {
+        "daily": daily,
+        "click_actions": _counter_items(clicks, 16),
+        "click_trends": _counter_trends(
+            date_keys,
+            click_daily,
+            [
+                "解析弹幕按钮",
+                "下载 CSV",
+                "下载 TXT",
+                "内置内容分析",
+                "自主内容分析",
+                "内置深度分析",
+                "自主深度分析",
+                "分享报告按钮",
+                "插件 GitHub 链接",
+                "获取 API Key",
+            ],
+        ),
         "latency": {
             "events": event_count,
             "p50_ms": _percentile(durations, 50),
@@ -603,6 +854,7 @@ def _app_log_errors(date_keys: list[str]) -> dict[str, Any]:
 def _merge_daily(
     date_keys: list[str],
     access_daily: dict[str, dict[str, Any]],
+    event_daily: dict[str, dict[str, Any]],
     artifact_daily: dict[str, dict[str, Any]],
     job_daily: dict[str, dict[str, Any]],
     report_daily: dict[str, dict[str, Any]],
@@ -612,6 +864,7 @@ def _merge_daily(
     for key in date_keys:
         row = _empty_daily(key)
         row.update(access_daily.get(key, {}))
+        row.update(event_daily.get(key, {}))
         row.update(artifact_daily.get(key, {}))
         row.update(job_daily.get(key, {}))
         row.update(report_daily.get(key, {}))
@@ -630,11 +883,11 @@ def _kpis(daily: list[dict[str, Any]], jobs: dict[str, Any], events: dict[str, A
     fields = [
         ("pv", "PV"),
         ("uv", "UV"),
-        ("downloads", "文件下载"),
         ("artifact_success", "解析成功"),
-        ("api_calls", "API调用"),
+        ("button_clicks", "按钮点击"),
+        ("builtin_ai_calls", "内置AI"),
+        ("custom_ai_calls", "自主模型"),
         ("analysis_jobs", "AI任务"),
-        ("errors", "错误"),
         ("reports", "分享报告"),
     ]
     return {
@@ -702,6 +955,31 @@ def _api_endpoint_items(counts: Counter[str], errors: Counter[str]) -> list[dict
 
 def _counter_items(counter: Counter[str], limit: int | None = None) -> list[dict[str, Any]]:
     return [{"name": name, "value": value} for name, value in counter.most_common(limit)]
+
+
+def _counter_trends(
+    date_keys: list[str],
+    daily_counters: dict[str, Counter[str]],
+    priority: list[str] | None = None,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    totals: Counter[str] = Counter()
+    for counts in daily_counters.values():
+        totals.update(counts)
+    names = [name for name, _ in totals.most_common(limit)]
+    ordered = [name for name in (priority or []) if name in totals]
+    ordered.extend([name for name in names if name not in ordered])
+    return [
+        {"name": name, "data": [daily_counters[key].get(name, 0) for key in date_keys]}
+        for name in ordered[:limit]
+    ]
+
+
+def _click_event_label(category: str) -> str:
+    name = str(category or "")
+    if name.startswith("click_"):
+        name = name[6:]
+    return CLICK_EVENT_LABELS.get(name, name or "未知按钮")
 
 
 def _video_meta_for_bvids(bvids: list[str], seed_meta: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
@@ -862,34 +1140,34 @@ def _iter_access_log(path: Path):
                 match = ACCESS_LOG_RE.match(line.strip())
                 if not match:
                     continue
-                parsed_time = _parse_access_time(match.group("time"))
-                if not parsed_time:
+                date_key = _access_date_key(match.group("time"))
+                if not date_key:
                     continue
                 method = match.group("method").upper()
                 target = match.group("target")
-                url = urlparse(target)
-                path_value = _normalize_path(url.path or "/")
-                query = parse_qs(url.query)
+                path_value, query_string = _target_path_query(target)
                 ua = match.group("ua")
                 ip_value = match.group("ip")
+                bot_family, bot_source = _bot_info(ua)
                 size_text = match.group("size")
                 try:
                     size = int(size_text) if size_text != "-" else 0
                 except ValueError:
                     size = 0
                 yield {
-                    "date": parsed_time.date().isoformat(),
+                    "date": date_key,
                     "method": method,
                     "target": target,
                     "path": path_value,
                     "status": int(match.group("status")),
                     "bytes": size,
-                    "ip_hash": _ip_hash(ip_value),
-                    "ip_segment": _ip_segment(ip_value),
-                    "referer_domain": _referer_domain(match.group("referer")),
-                    "user_agent_family": _user_agent_family(ua),
-                    "is_bot": _is_bot(ua),
-                    "bvid": _extract_bvid_from_parts(path_value, query),
+                    "ip": ip_value,
+                    "referer": match.group("referer"),
+                    "ua": ua,
+                    "is_bot": bot_family != "真实用户",
+                    "bot_family": bot_family,
+                    "bot_source": bot_source,
+                    "bvid": _extract_bvid_from_target(path_value, query_string),
                 }
     except OSError:
         return
@@ -908,6 +1186,27 @@ def _parse_access_time(value: str) -> datetime | None:
         return datetime.strptime(value, "%d/%b/%Y:%H:%M:%S %z")
     except ValueError:
         return None
+
+
+def _target_path_query(target: str) -> tuple[str, str]:
+    target = str(target or "/")
+    if target.startswith("http://") or target.startswith("https://"):
+        parsed = urlparse(target)
+        return _normalize_path(parsed.path or "/"), parsed.query
+    path, _, query = target.partition("?")
+    return _normalize_path(path or "/"), query
+
+
+def _access_date_key(value: str) -> str | None:
+    value = str(value or "")
+    if len(value) < 11:
+        return None
+    day = value[:2]
+    month = ACCESS_LOG_MONTHS.get(value[3:6])
+    year = value[7:11]
+    if not month or not day.isdigit() or not year.isdigit():
+        return None
+    return f"{year}-{month}-{day}"
 
 
 def _extract_bvid_from_request(flask_request, target: str) -> str | None:
@@ -943,6 +1242,12 @@ def _extract_bvid_from_parts(path: str, query: dict[str, list[str]]) -> str | No
     return found.group(0) if found else None
 
 
+def _extract_bvid_from_target(path: str, query_string: str) -> str | None:
+    if "BV" not in (path or "") and "BV" not in (query_string or "") and "bvid" not in (query_string or "") and "bv=" not in (query_string or ""):
+        return None
+    return _extract_bvid_from_parts(path, parse_qs(query_string))
+
+
 def _normalize_bvid(value: str) -> str | None:
     value = str(value or "").strip()
     match = re.search(BV_RE, value)
@@ -960,6 +1265,10 @@ def _ip_hash(value: str) -> str:
 
 def _ip_segment(value: str) -> str:
     value = str(value or "").strip()
+    if value.count(".") == 3 and ":" not in value:
+        parts = value.split(".")
+        if all(part.isdigit() and 0 <= int(part) <= 255 for part in parts):
+            return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
     try:
         ip = ipaddress.ip_address(value)
     except ValueError:
@@ -967,6 +1276,145 @@ def _ip_segment(value: str) -> str:
     prefix = 24 if ip.version == 4 else 48
     network = ipaddress.ip_network(f"{ip}/{prefix}", strict=False)
     return f"{network.network_address}/{prefix}"
+
+
+def _region_items_from_segments(segments: Counter[str], limit: int = 12) -> list[dict[str, Any]]:
+    if not segments:
+        return []
+    cache = _read_ip_region_cache()
+    top_segments = segments.most_common(160)
+    missing = [
+        segment
+        for segment, _ in top_segments[:16]
+        if segment not in cache and _public_representative_ip(segment)
+    ][:8]
+    changed = False
+    if missing:
+        with ThreadPoolExecutor(max_workers=min(4, len(missing))) as executor:
+            futures = {executor.submit(_fetch_ip_region, _public_representative_ip(segment)): segment for segment in missing}
+            for future in as_completed(futures):
+                segment = futures[future]
+                try:
+                    label = future.result() or "待归类地区"
+                except Exception:
+                    label = "待归类地区"
+                cache[segment] = {"label": label, "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
+                changed = True
+    region_counts: Counter[str] = Counter()
+    for segment, count in top_segments:
+        label, did_fetch = _region_label_for_segment(segment, cache, False)
+        changed = changed or did_fetch
+        region_counts[label] += count
+    if changed:
+        _write_ip_region_cache(cache)
+    return _counter_items(region_counts, limit)
+
+
+def _region_label_for_segment(segment: str, cache: dict[str, dict[str, Any]], can_fetch: bool) -> tuple[str, bool]:
+    segment = str(segment or "").strip()
+    if not segment or segment == "unknown":
+        return "未知地区", False
+    cached = cache.get(segment)
+    if isinstance(cached, dict) and cached.get("label"):
+        return str(cached["label"]), False
+    ip_value = _representative_ip(segment)
+    if not ip_value:
+        label = "未知地区"
+        cache[segment] = {"label": label, "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
+        return label, True
+    try:
+        ip = ipaddress.ip_address(ip_value)
+    except ValueError:
+        return "未知地区", False
+    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
+        label = "内网/保留地址"
+        cache[segment] = {"label": label, "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
+        return label, True
+    if not can_fetch:
+        return "待归类地区", False
+    label = _fetch_ip_region(ip_value) or "未知地区"
+    cache[segment] = {"label": label, "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
+    return label, True
+
+
+def _representative_ip(segment: str) -> str:
+    try:
+        network = ipaddress.ip_network(segment, strict=False)
+    except ValueError:
+        return ""
+    try:
+        value = int(network.network_address)
+        if network.num_addresses > 2:
+            value += 1
+        return str(ipaddress.ip_address(value))
+    except Exception:
+        return str(network.network_address)
+
+
+def _public_representative_ip(segment: str) -> str:
+    ip_value = _representative_ip(segment)
+    if not ip_value:
+        return ""
+    try:
+        ip = ipaddress.ip_address(ip_value)
+    except ValueError:
+        return ""
+    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
+        return ""
+    return ip_value
+
+
+def _fetch_ip_region(ip_value: str) -> str:
+    try:
+        response = requests.get(
+            f"http://ip-api.com/json/{ip_value}",
+            params={"lang": "zh-CN", "fields": "status,country,regionName,city"},
+            timeout=(0.3, 0.8),
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except Exception:
+        return ""
+    if payload.get("status") != "success":
+        return ""
+    parts: list[str] = []
+    for key in ("country", "regionName", "city"):
+        value = str(payload.get(key) or "").strip()
+        if value and value not in parts:
+            parts.append(value)
+    return " / ".join(parts[:3])
+
+
+def _read_ip_region_cache() -> dict[str, dict[str, Any]]:
+    try:
+        raw = json.loads(OPS_IP_REGION_CACHE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _write_ip_region_cache(cache: dict[str, dict[str, Any]]) -> None:
+    try:
+        OPS_IP_REGION_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        trimmed = dict(list(cache.items())[-800:])
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=str(OPS_IP_REGION_CACHE_FILE.parent),
+            delete=False,
+        ) as tmp_file:
+            json.dump(trimmed, tmp_file, ensure_ascii=False, sort_keys=True)
+            tmp_name = tmp_file.name
+        os.replace(tmp_name, OPS_IP_REGION_CACHE_FILE)
+        try:
+            if os.geteuid() == 0:
+                user = pwd.getpwnam("www")
+                os.chown(OPS_IP_REGION_CACHE_FILE, user.pw_uid, user.pw_gid)
+            os.chmod(OPS_IP_REGION_CACHE_FILE, 0o660)
+        except OSError:
+            pass
+    except Exception:
+        return
 
 
 def _referer_domain(value: str) -> str:
@@ -1011,6 +1459,24 @@ def _is_bot(value: str) -> bool:
     return bool(BOT_RE.search(str(value or "")))
 
 
+def _bot_family(value: str) -> str:
+    return _bot_info(value)[0]
+
+
+def _bot_info(value: str) -> tuple[str, str]:
+    ua = str(value or "").lower()
+    if not _contains_any(ua, ALL_BOT_TOKENS):
+        return "真实用户", "真实用户"
+    for family, source, tokens in BOT_SOURCE_RULES:
+        if _contains_any(ua, tokens):
+            return family, source
+    return "其他 Bot", "其他 Bot"
+
+
+def _contains_any(value: str, tokens: tuple[str, ...]) -> bool:
+    return any(token in value for token in tokens)
+
+
 def _normalize_path(value: str) -> str:
     path = str(value or "/").split("?", 1)[0].strip() or "/"
     if path != "/" and path.endswith("/"):
@@ -1050,6 +1516,10 @@ def _empty_daily(date_key: str) -> dict[str, Any]:
         "api_calls": 0,
         "downloads": 0,
         "plugin_downloads": 0,
+        "button_clicks": 0,
+        "ai_calls": 0,
+        "builtin_ai_calls": 0,
+        "custom_ai_calls": 0,
         "errors": 0,
         "bytes": 0,
         "artifact_success": 0,

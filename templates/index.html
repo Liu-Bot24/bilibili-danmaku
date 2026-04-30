@@ -2710,11 +2710,11 @@
           </div>
 
           <div class="plugin-actions" aria-label="插件下载与项目地址">
-              <a class="plugin-action" href="{{ plugin_info.github_url }}" target="_blank" rel="noopener noreferrer">
+              <a class="plugin-action" href="{{ plugin_info.github_url }}" target="_blank" rel="noopener noreferrer" data-ops-event="plugin_github_click">
                   <strong>GitHub 仓库 <em>打开</em></strong>
                   <span>查看源码、README 和本地安装说明。</span>
               </a>
-              <a class="plugin-action plugin-action--primary" href="{{ plugin_info.download_url }}" download="{{ plugin_info.download_filename }}">
+              <a class="plugin-action plugin-action--primary" href="{{ plugin_info.download_url }}" download="{{ plugin_info.download_filename }}" data-ops-event="plugin_download_click">
                   <strong>下载插件包 <em>v{{ plugin_info.version }}</em></strong>
                   <span>下载后解压，在 Chrome 扩展程序页面加载解压后的文件夹。</span>
               </a>
@@ -2814,7 +2814,7 @@
                       <div class="input-group">
                           <label class="screen-reader-text" for="bvid">请输入视频 BV 号或 Bilibili 视频链接</label>
                           <input type="text" id="bvid" value="{{ initial_bvid|default('', true)|e }}" placeholder="粘贴 BV 号或 Bilibili 视频链接">
-                          <button type="button" onclick="downloadDanmaku()" id="downloadBtn">{{ '重新解析' if is_result_page else '解析弹幕' }}</button>
+                          <button type="button" onclick="downloadDanmaku({ source: 'button' })" id="downloadBtn">{{ '重新解析' if is_result_page else '解析弹幕' }}</button>
                       </div>
                       {% if not is_result_page %}
                       <div class="examples" aria-label="支持格式">
@@ -2963,7 +2963,7 @@
                                           <label class="config-field">
                                               <span class="config-label config-label-row">
                                                   <span>API Key</span>
-                                                  <span class="config-label-inline-note">（<a class="config-label-link" href="https://cloud.siliconflow.cn/i/My0p5Jgs" target="_blank" rel="noopener">获取 API Key</a>）</span>
+                                                  <span class="config-label-inline-note">（<a class="config-label-link" href="https://cloud.siliconflow.cn/i/My0p5Jgs" target="_blank" rel="noopener" data-ops-event="custom_api_key_click">获取 API Key</a>）</span>
                                               </span>
                                               <input type="password" id="customApiKey" spellcheck="false" placeholder="sk-...">
                                           </label>
@@ -2977,7 +2977,7 @@
                                           </label>
                                       </div>
                                       <div class="custom-api-inline-actions">
-                                          <button type="button" class="secondary-button compact-button" id="customApiTestBtn">测试连通</button>
+                                          <button type="button" class="secondary-button compact-button" id="customApiTestBtn" data-ops-event="custom_api_test_click">测试连通</button>
                                           <span class="connection-indicator" id="customApiConnectionStatus" data-status="idle">
                                               <span class="connection-indicator-dot" aria-hidden="true"></span>
                                               <span class="connection-indicator-text">未测试</span>
@@ -3036,8 +3036,8 @@
                               </div>
 
                               <div class="custom-api-panel-actions">
-                                  <button type="button" class="compact-button" id="customApiSaveBtn">保存</button>
-                                  <button type="button" class="secondary-button compact-button" id="customApiClearBtn">清空</button>
+                                  <button type="button" class="compact-button" id="customApiSaveBtn" data-ops-event="custom_api_save_click">保存</button>
+                                  <button type="button" class="secondary-button compact-button" id="customApiClearBtn" data-ops-event="custom_api_clear_click">清空</button>
                               </div>
                               </div>
                           </details>
@@ -3073,7 +3073,7 @@
                                   </div>
                                   <div class="analysis-actions subtitle-upload">
                                       <input type="file" id="subtitleFile" accept=".txt" style="display: none">
-                                      <button type="button" onclick="document.getElementById('subtitleFile').click()" class="content-analysis-btn secondary-button">
+                                      <button type="button" onclick="document.getElementById('subtitleFile').click()" class="content-analysis-btn secondary-button" data-ops-event="subtitle_upload_button_click">
                                           上传字幕文件
                                       </button>
                                       <button type="button" onclick="startDeepAnalysis()" class="content-analysis-btn" id="deepAnalysisBtn" disabled>
@@ -3157,6 +3157,49 @@
    const CUSTOM_API_STORAGE_KEY = 'biliDanmakuCustomApiConfigV1';
    let savedCustomApiConfig = null;
 
+   function trackOpsEvent(eventName, meta = {}) {
+       const name = String(eventName || '').trim();
+       if (!name) {
+           return;
+       }
+       try {
+           const payload = {
+               event: name,
+               meta: {
+                   path: window.location.pathname,
+                   bvid: currentBvid || processedBvid || INITIAL_BVID || '',
+                   analysis_id: currentAnalysisId || '',
+                   report_id: currentReportId || '',
+                   ...meta
+               }
+           };
+           const body = JSON.stringify(payload);
+           if (navigator.sendBeacon) {
+               const blob = new Blob([body], { type: 'application/json' });
+               if (navigator.sendBeacon('/api/v2/ops-events', blob)) {
+                   return;
+               }
+           }
+           fetch('/api/v2/ops-events', {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body,
+               keepalive: true
+           }).catch(() => {});
+       } catch (_error) {
+       }
+   }
+
+   function initOpsEventTracking() {
+       document.addEventListener('click', event => {
+           const target = event.target.closest('[data-ops-event]');
+           if (!target || target.disabled || target.getAttribute('aria-disabled') === 'true') {
+               return;
+           }
+           trackOpsEvent(target.dataset.opsEvent || '');
+       });
+   }
+
    function initCoffeeModal() {
        const modal = document.getElementById('coffeeModal');
        const openButton = document.querySelector('[data-open-coffee]');
@@ -3238,6 +3281,7 @@
    }
 
    document.addEventListener('DOMContentLoaded', function() {
+       initOpsEventTracking();
        initCoffeeModal();
        initShareCardLightbox();
        if (window.marked && typeof window.marked.use === 'function') {
@@ -3259,7 +3303,7 @@
        if (bvidInput) {
            bvidInput.addEventListener('keypress', function(e) {
                if (e.key === 'Enter') {
-                   downloadDanmaku();
+                   downloadDanmaku({ source: 'enter' });
                }
            });
 
@@ -3508,13 +3552,13 @@
                    <p class="share-report-copy">保留当前分析结果，生成一个可分享的结果页链接。</p>
                </div>
                <div class="share-report-actions">
-                   <button type="button" class="share-report-btn secondary-button" onclick="saveSharedReport('${escapeHTML(kind)}')">分享报告</button>
+                   <button type="button" class="share-report-btn secondary-button" onclick="saveSharedReport('${escapeHTML(kind)}')" data-ops-event="share_report_click">分享报告</button>
                    <span class="share-report-status" data-share-status></span>
                </div>
                <div class="share-report-output" data-share-output hidden>
                    <div class="share-report-link-row">
                        <input type="text" class="share-report-link" data-share-link readonly>
-                       <button type="button" class="download-action-button download-action-button--secondary share-report-copy-btn" onclick="copySharedReportLink(this)">复制链接</button>
+                       <button type="button" class="download-action-button download-action-button--secondary share-report-copy-btn" onclick="copySharedReportLink(this)" data-ops-event="share_copy_link_click">复制链接</button>
                    </div>
                    <p class="share-report-meta">报告将在服务器存储 ${retentionDays()} 天，到期后链接会失效。</p>
                    <div class="share-report-media-row">
@@ -3526,7 +3570,7 @@
                            <div class="share-card-placeholder" data-share-card-placeholder>正在生成分享卡片</div>
                            <div class="share-card-frame" data-share-card-frame hidden>
                                <img class="share-card-image" data-share-card-img alt="弹幕解析结果分享卡片">
-                               <button type="button" class="share-card-download" data-share-card-download onclick="downloadShareCard(this)" aria-label="下载分享卡片" title="下载图片" disabled>
+                               <button type="button" class="share-card-download" data-share-card-download onclick="downloadShareCard(this)" aria-label="下载分享卡片" title="下载图片" data-ops-event="share_card_download_click" disabled>
                                    <svg viewBox="0 0 24 24" aria-hidden="true">
                                        <path d="M12 3v10m0 0 4-4m-4 4-4-4M5 15v3a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>
                                    </svg>
@@ -3980,13 +4024,14 @@
        `;
        const actionsContainer = result.querySelector('.download-actions');
        [
-           { href: csvHref, className: 'download-action-button download-action-button--primary', label: '下载 CSV' },
-           { href: txtHref, className: 'download-action-button download-action-button--secondary', label: '下载 TXT' },
+           { href: csvHref, className: 'download-action-button download-action-button--primary', label: '下载 CSV', eventName: 'csv_download_click' },
+           { href: txtHref, className: 'download-action-button download-action-button--secondary', label: '下载 TXT', eventName: 'txt_download_click' },
        ].forEach((action) => {
            const link = document.createElement('a');
            link.href = action.href;
            link.className = action.className;
            link.textContent = action.label;
+           link.dataset.opsEvent = action.eventName;
            actionsContainer.appendChild(link);
        });
 	       analysisContainer.style.display = 'block';
@@ -5113,7 +5158,10 @@ function formatDate(date) {
     return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
 }
 
-   function downloadDanmaku() {
+   function downloadDanmaku(options = {}) {
+       if (options && options.source) {
+           trackOpsEvent('parse_danmaku_click', { source: options.source });
+       }
        const input = document.getElementById('bvid').value.trim();
        const bvPattern = /BV[a-zA-Z0-9]+/;
        const match = input.match(bvPattern);
@@ -5463,7 +5511,9 @@ function formatDate(date) {
        resultsContainer.insertBefore(card, resultsContainer.firstChild);
        
        try {
-           if (getSavedVerifiedCustomModelConfig()) {
+           const customConfig = getSavedVerifiedCustomModelConfig();
+           trackOpsEvent(customConfig ? 'custom_content_analysis_click' : 'builtin_content_analysis_click');
+           if (customConfig) {
                await runCustomContentAnalysis(card);
            } else {
                const response = await fetch('/analyze_content', {
@@ -5510,6 +5560,7 @@ function formatDate(date) {
        subtitleFileInput.addEventListener('change', function(e) {
            const file = e.target.files[0];
            if (!file) return;
+           trackOpsEvent('subtitle_file_selected');
            
            if (!currentBvid || !ensureAnalysisMaterialsReady()) {
                return;
@@ -5579,7 +5630,9 @@ function formatDate(date) {
        resultsContainer.insertBefore(card, resultsContainer.firstChild);
        
        try {
-           if (getSavedVerifiedCustomModelConfig()) {
+           const customConfig = getSavedVerifiedCustomModelConfig();
+           trackOpsEvent(customConfig ? 'custom_deep_analysis_click' : 'builtin_deep_analysis_click');
+           if (customConfig) {
                await runCustomDeepAnalysis(card);
            } else {
                const response = await fetch('/deep_analysis', {

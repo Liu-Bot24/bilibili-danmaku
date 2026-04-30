@@ -23,7 +23,7 @@ from danmaku_backend.analysis.deep_analysis import DeepAnalysis
 from danmaku_backend.runtime.bootstrap import ensure_directories
 from danmaku_backend.runtime.logging_bus import set_job_event_writer
 from danmaku_backend.services.artifacts import default_store
-from danmaku_backend.services.analytics import build_ops_dashboard, record_request_event
+from danmaku_backend.services.analytics import build_ops_dashboard, record_client_event, record_request_event
 from danmaku_backend.services.baidu_submit import default_baidu_submitter
 from danmaku_backend.services.bilibili import BILIBILI_HEADERS, extract_bvid, get_video_info
 from danmaku_backend.services.database import connect_state_db, ensure_state_db
@@ -590,6 +590,7 @@ def robots_txt():
             "Disallow: /ops",
             "Disallow: /api/",
             "Disallow: /api/v2/ops-dashboard",
+            "Disallow: /api/v2/ops-events",
             "Disallow: /download",
             "Disallow: /downloads/",
             "Disallow: /upload_subtitle",
@@ -1342,6 +1343,21 @@ def ops_dashboard_data():
         request.args.get("end"),
     )
     response = jsonify({"success": True, "data": data, "error": None, "meta": {"schema_version": "2.0"}})
+    return _noindex_response(response)
+
+
+@app.route("/api/v2/ops-events", methods=["POST"])
+def ops_event():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        try:
+            payload = json.loads(request.get_data(as_text=True) or "{}")
+        except Exception:
+            payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    recorded = record_client_event(request, payload.get("event", ""), payload.get("meta") if isinstance(payload.get("meta"), dict) else {})
+    response = jsonify({"success": bool(recorded), "error": None, "meta": {"schema_version": "2.0"}})
     return _noindex_response(response)
 
 
