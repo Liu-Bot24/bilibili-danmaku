@@ -3968,18 +3968,27 @@
    function renderLiveDownloadResult(data) {
        const result = document.getElementById('result');
        const analysisContainer = document.getElementById('analysisContainer');
-       const csvHref = data.download_urls?.csv || `/downloads/${encodeURIComponent(data.csv_filename)}`;
-       const txtHref = data.download_urls?.txt || `/downloads/${encodeURIComponent(data.txt_filename)}`;
+       const buildDownloadHref = (filename) => '/downloads/' + encodeURIComponent(filename || '');
+       const csvHref = data.download_urls?.csv || buildDownloadHref(data.csv_filename);
+       const txtHref = data.download_urls?.txt || buildDownloadHref(data.txt_filename);
        const friendlyMessage = String(data.message || '').replace('成功下载', '成功获取');
        result.className = 'result success';
        result.style.display = 'block';
        result.innerHTML = `
            <div class="download-status-text">${escapeHTML(friendlyMessage)}</div>
-           <div class="download-actions">
-               <a href="${csvHref}" class="download-action-button download-action-button--primary">下载 CSV</a>
-               <a href="${txtHref}" class="download-action-button download-action-button--secondary">下载 TXT</a>
-           </div>
+           <div class="download-actions"></div>
        `;
+       const actionsContainer = result.querySelector('.download-actions');
+       [
+           { href: csvHref, className: 'download-action-button download-action-button--primary', label: '下载 CSV' },
+           { href: txtHref, className: 'download-action-button download-action-button--secondary', label: '下载 TXT' },
+       ].forEach((action) => {
+           const link = document.createElement('a');
+           link.href = action.href;
+           link.className = action.className;
+           link.textContent = action.label;
+           actionsContainer.appendChild(link);
+       });
 	       analysisContainer.style.display = 'block';
 	       analysisContainer.setAttribute('aria-busy', 'false');
 	       renderResultSnapshot(buildResultSnapshotFromDownload(data), { bvid: currentBvid });
