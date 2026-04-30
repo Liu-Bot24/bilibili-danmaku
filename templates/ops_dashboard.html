@@ -479,17 +479,17 @@
 
     .bvid-table th:nth-child(1),
     .bvid-table td:nth-child(1) {
-      width: 180px;
+      width: 150px;
     }
 
     .bvid-table th:nth-child(2),
     .bvid-table td:nth-child(2) {
-      width: 46%;
+      width: 38%;
     }
 
     .bvid-table th:nth-child(3),
     .bvid-table td:nth-child(3) {
-      width: 220px;
+      width: 180px;
     }
 
     .comparison {
@@ -788,11 +788,11 @@
           <div class="panel-head">
             <div>
               <h3>热门 BV</h3>
-              <span id="bvidScopeText">来自结果页、下载、报告与解析记录</span>
+              <span id="bvidScopeText">综合次数 = 访问请求 + 解析成功 + 分享报告，未加权</span>
             </div>
             <div class="panel-tools">
               <div class="segmented" role="group" aria-label="BV 榜单">
-                <button type="button" data-bvid-mode="all" class="active">全部热度</button>
+                <button type="button" data-bvid-mode="all" class="active">综合次数</button>
                 <button type="button" data-bvid-mode="ai">AI 分析</button>
               </div>
             </div>
@@ -1191,7 +1191,7 @@
 
     function renderBvidPanel(data) {
       const isAi = state.bvidMode === 'ai';
-      $('#bvidScopeText').textContent = isAi ? '有 AI 分析任务记录的 BV' : '来自结果页、下载、报告与解析记录';
+      $('#bvidScopeText').textContent = isAi ? '有 AI 分析任务记录的 BV' : '综合次数 = 访问请求 + 解析成功 + 分享报告，未加权';
       $$('.segmented button[data-bvid-mode]').forEach((button) => {
         button.classList.toggle('active', button.dataset.bvidMode === state.bvidMode);
       });
@@ -1203,9 +1203,9 @@
       const head = $('#bvidTableHead');
       head.innerHTML = isAi
         ? '<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th>AI分析</th><th>视频</th><th class="numeric">次数</th></tr>'
-        : '<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th>视频</th><th class="numeric">热度</th></tr>';
+        : '<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th class="numeric">访问请求</th><th class="numeric">解析成功</th><th class="numeric">分享报告</th><th class="numeric">综合次数</th><th>视频</th></tr>';
       if (!rows || rows.length === 0) {
-        target.innerHTML = `<tr><td colspan="${isAi ? 6 : 5}"><div class="empty">暂无 BV 数据</div></td></tr>`;
+        target.innerHTML = `<tr><td colspan="${isAi ? 6 : 8}"><div class="empty">暂无 BV 数据</div></td></tr>`;
         return;
       }
       target.innerHTML = rows.map((item) => {
@@ -1235,8 +1235,11 @@
             <td>${escapeHtml(bvid)}</td>
             <td class="video-title-cell" title="${escapeHtml(title)}">${escapeHtml(middleEllipsis(title, 34))}</td>
             <td title="${escapeHtml(author)}">${escapeHtml(middleEllipsis(author, 18))}</td>
-            <td><a class="table-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">查看视频</a></td>
+            <td class="numeric">${formatNumber(item.requests || 0)}</td>
+            <td class="numeric">${formatNumber(item.parses || 0)}</td>
+            <td class="numeric">${formatNumber(item.reports || 0)}</td>
             <td class="numeric">${formatNumber(item.value || 0)}</td>
+            <td><a class="table-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">查看视频</a></td>
           </tr>
         `;
       }).join('');
@@ -1480,7 +1483,7 @@
         ['#jobTable', 4],
         ['#botTable', 2],
         ['#errorTable', 2],
-        ['#bvidTable', state.bvidMode === 'ai' ? 6 : 5]
+        ['#bvidTable', state.bvidMode === 'ai' ? 6 : 8]
       ].forEach(([selector, colspan]) => {
         const target = $(selector);
         if (target) target.innerHTML = `<tr><td colspan="${colspan}"><div class="empty">正在读取当前筛选范围...</div></td></tr>`;

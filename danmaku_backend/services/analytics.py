@@ -132,7 +132,7 @@ BOT_SOURCE_RULES = (
 )
 INTERNAL_HOSTS = {"danmu.liu-qi.cn", "dm.liu-qi.cn"}
 ANALYTICS_CACHE_SECONDS = 900
-OPS_DASHBOARD_CACHE_SCHEMA = "ops-v9-region-total"
+OPS_DASHBOARD_CACHE_SCHEMA = "ops-v10-bvid-breakdown"
 VIDEO_META_FETCH_LIMIT = 6
 MAX_ACCESS_LOG_BYTES = 80 * 1024 * 1024
 OPS_VIDEO_META_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_video_meta.json")
@@ -1284,22 +1284,46 @@ def _feature_trends(date_keys: list[str], feature_daily: dict[str, Counter[str]]
     ]
 
 
-def _top_bvids(*counters: Counter[str], video_meta: dict[str, dict[str, str]] | None = None) -> list[dict[str, Any]]:
-    merged: Counter[str] = Counter()
-    for counter in counters:
-        merged.update(counter)
-    top_items = merged.most_common(12)
-    meta = _video_meta_for_bvids([name for name, _ in top_items], video_meta or {})
-    return [
-        {
-            "name": name,
-            "value": value,
-            "title": meta.get(name, {}).get("title", ""),
-            "author": meta.get(name, {}).get("author", ""),
-            "url": meta.get(name, {}).get("url", f"https://www.bilibili.com/video/{name}"),
-        }
-        for name, value in top_items
-    ]
+def _top_bvids(
+    request_counts: Counter[str],
+    artifact_counts: Counter[str],
+    report_counts: Counter[str],
+    video_meta: dict[str, dict[str, str]] | None = None,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for name in set(request_counts) | set(artifact_counts) | set(report_counts):
+        requests = int(request_counts.get(name, 0))
+        parses = int(artifact_counts.get(name, 0))
+        reports = int(report_counts.get(name, 0))
+        rows.append(
+            {
+                "name": name,
+                "value": requests + parses + reports,
+                "requests": requests,
+                "parses": parses,
+                "reports": reports,
+            }
+        )
+    rows.sort(
+        key=lambda item: (
+            -int(item.get("value") or 0),
+            -int(item.get("parses") or 0),
+            -int(item.get("reports") or 0),
+            str(item.get("name") or ""),
+        )
+    )
+    top_rows = rows[:12]
+    meta = _video_meta_for_bvids([str(item["name"]) for item in top_rows], video_meta or {})
+    for item in top_rows:
+        name = str(item["name"])
+        item.update(
+            {
+                "title": meta.get(name, {}).get("title", ""),
+                "author": meta.get(name, {}).get("author", ""),
+                "url": meta.get(name, {}).get("url", f"https://www.bilibili.com/video/{name}"),
+            }
+        )
+    return top_rows
 
 
 def _ai_bvid_items(
