@@ -132,7 +132,7 @@ BOT_SOURCE_RULES = (
 )
 INTERNAL_HOSTS = {"danmu.liu-qi.cn", "dm.liu-qi.cn"}
 ANALYTICS_CACHE_SECONDS = 900
-OPS_DASHBOARD_CACHE_SCHEMA = "ops-v5-period-compare"
+OPS_DASHBOARD_CACHE_SCHEMA = "ops-v8-uv-modes"
 VIDEO_META_FETCH_LIMIT = 6
 MAX_ACCESS_LOG_BYTES = 80 * 1024 * 1024
 OPS_VIDEO_META_CACHE_FILE = OPS_DASHBOARD_CACHE_FILE.with_name("ops_video_meta.json")
@@ -452,7 +452,9 @@ def build_ops_dashboard(
         daily,
         jobs,
         events,
+        range_uv=access["range_uv"],
         previous_daily=previous_daily if previous_available else [],
+        previous_range_uv=previous_metrics["access"]["range_uv"] if previous_available else None,
     )
     dashboard = {
         "meta": {
@@ -477,7 +479,7 @@ def build_ops_dashboard(
                 "ips": sorted(excluded_ips),
             },
             "notes": [
-                "PV/UV 默认排除明显爬虫与命令行探测流量。",
+                "PV、UV去重与日UV累计默认排除明显爬虫与命令行探测流量。",
                 "可按管理员 IP 过滤访问日志、按钮埋点以及可关联的解析/任务/报告数据。",
                 "地区来源基于聚合网段做近似归类，不返回完整原始 IP。",
                 "按钮点击从前端埋点上线后开始累计。",
@@ -485,17 +487,34 @@ def build_ops_dashboard(
         },
         "kpis": kpis,
         "daily": daily,
-        "feature_actions": _counter_items_with_uv(access["feature_totals"], access["feature_visitors"], 16),
+        "feature_actions": _counter_items_with_uv(
+            access["feature_totals"],
+            access["feature_visitors"],
+            16,
+            daily_visitor_sets=access["feature_uv_daily"],
+        ),
         "feature_trends": _feature_trends(date_keys, access["feature_daily"]),
         "feature_uv_trends": _visitor_trends(date_keys, access["feature_uv_daily"], FEATURE_TREND_PRIORITY, 9),
         "click_actions": events["click_actions"],
         "click_trends": events["click_trends"],
         "click_uv_trends": events["click_uv_trends"],
-        "ai_mode_breakdown": _counter_items_with_uv(access["ai_modes"], access["ai_mode_visitors"]),
-        "ai_mode_details": _counter_items_with_uv(access["ai_mode_details"], access["ai_detail_visitors"]),
+        "ai_mode_breakdown": _counter_items_with_uv(
+            access["ai_modes"],
+            access["ai_mode_visitors"],
+            daily_visitor_sets=access["ai_mode_uv_daily"],
+        ),
+        "ai_mode_details": _counter_items_with_uv(
+            access["ai_mode_details"],
+            access["ai_detail_visitors"],
+            daily_visitor_sets=access["ai_detail_uv_daily"],
+        ),
         "ai_mode_trends": _counter_trends(date_keys, access["ai_mode_daily"], ["内置 AI", "自主模型"]),
         "ai_mode_uv_trends": _visitor_trends(date_keys, access["ai_mode_uv_daily"], ["内置 AI", "自主模型"]),
-        "ai_analysis_breakdown": _counter_items_with_uv(access["ai_mode_details"], access["ai_detail_visitors"]),
+        "ai_analysis_breakdown": _counter_items_with_uv(
+            access["ai_mode_details"],
+            access["ai_detail_visitors"],
+            daily_visitor_sets=access["ai_detail_uv_daily"],
+        ),
         "ai_analysis_trends": _counter_trends(
             date_keys,
             access["ai_detail_daily"],
@@ -505,13 +524,19 @@ def build_ops_dashboard(
         "download_breakdown": _counter_items(access["download_breakdown"]),
         "status_codes": _counter_items(access["status_codes"]),
         "api_endpoints": _api_endpoint_items(access["api_endpoints"], access["api_endpoint_errors"]),
-        "top_pages": _counter_items_with_uv(access["top_pages"], access["page_visitors"], 10),
+        "top_pages": _counter_items_with_uv(
+            access["top_pages"],
+            access["page_visitors"],
+            10,
+            daily_visitor_sets=access["page_visitors_daily"],
+        ),
         "top_referrers": _counter_items_with_uv(
             access["top_referrers"],
             access["referrer_visitors"],
             10,
             uv_as_value=True,
             count_key="visits",
+            daily_visitor_sets=access["referrer_visitors_daily"],
         ),
         "top_regions": access["top_regions"],
         "top_user_agents": _counter_items_with_uv(
@@ -520,6 +545,7 @@ def build_ops_dashboard(
             8,
             uv_as_value=True,
             count_key="visits",
+            daily_visitor_sets=access["user_agent_visitors_daily"],
         ),
         "bot_traffic": access["bot_traffic"],
         "top_bvids": _top_bvids(
@@ -650,17 +676,22 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
     daily = {key: _empty_daily(key) for key in date_keys}
     date_set = set(date_keys)
     visitors: dict[str, set[str]] = defaultdict(set)
+    range_visitors: set[str] = set()
     feature_daily: dict[str, Counter[str]] = defaultdict(Counter)
     feature_totals: Counter[str] = Counter()
     feature_uv_daily: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     feature_visitors: dict[str, set[str]] = defaultdict(set)
     top_pages: Counter[str] = Counter()
     page_visitors: dict[str, set[str]] = defaultdict(set)
+    page_visitors_daily: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     top_referrers: Counter[str] = Counter()
     referrer_visitors: dict[str, set[str]] = defaultdict(set)
+    referrer_visitors_daily: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     region_visitors: dict[str, set[str]] = defaultdict(set)
+    region_visitors_daily: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     top_user_agents: Counter[str] = Counter()
     user_agent_visitors: dict[str, set[str]] = defaultdict(set)
+    user_agent_visitors_daily: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     top_bvids: Counter[str] = Counter()
     download_breakdown: Counter[str] = Counter()
     status_codes: Counter[str] = Counter()
@@ -750,16 +781,22 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
                 if category in PAGE_CATEGORIES and row["method"] == "GET" and status < 500:
                     day["pv"] += 1
                     visitors[date_key].add(visitor_key)
-                    region_visitors[_ip_segment(row["ip"])].add(visitor_key)
+                    range_visitors.add(visitor_key)
+                    region_segment = _ip_segment(row["ip"])
+                    region_visitors[region_segment].add(visitor_key)
+                    region_visitors_daily[date_key][region_segment].add(visitor_key)
                     top_pages[label] += 1
                     page_visitors[label].add(visitor_key)
+                    page_visitors_daily[date_key][label].add(visitor_key)
                     user_agent = _user_agent_family(row["ua"])
                     top_user_agents[user_agent] += 1
                     user_agent_visitors[user_agent].add(visitor_key)
+                    user_agent_visitors_daily[date_key][user_agent].add(visitor_key)
                     referer_domain = _referer_domain(row["referer"])
                     if referer_domain:
                         top_referrers[referer_domain] += 1
                         referrer_visitors[referer_domain].add(visitor_key)
+                        referrer_visitors_daily[date_key][referer_domain].add(visitor_key)
                 if row["bvid"]:
                     top_bvids[row["bvid"]] += 1
 
@@ -767,17 +804,21 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
         daily[key]["uv"] = len(unique_ips)
     return {
         "daily": daily,
+        "range_uv": len(range_visitors),
         "feature_daily": feature_daily,
         "feature_totals": feature_totals,
         "feature_uv_daily": feature_uv_daily,
         "feature_visitors": feature_visitors,
         "top_pages": top_pages,
         "page_visitors": page_visitors,
+        "page_visitors_daily": page_visitors_daily,
         "top_referrers": top_referrers,
         "referrer_visitors": referrer_visitors,
+        "referrer_visitors_daily": referrer_visitors_daily,
         "top_ip_segments": Counter({segment: len(values) for segment, values in region_visitors.items()}),
         "top_user_agents": top_user_agents,
         "user_agent_visitors": user_agent_visitors,
+        "user_agent_visitors_daily": user_agent_visitors_daily,
         "top_bvids": top_bvids,
         "download_breakdown": download_breakdown,
         "status_codes": status_codes,
@@ -791,7 +832,7 @@ def _access_log_metrics(date_keys: list[str], excluded_ips: set[str] | None = No
         "ai_detail_daily": ai_detail_daily,
         "ai_detail_uv_daily": ai_detail_uv_daily,
         "ai_detail_visitors": ai_detail_visitors,
-        "top_regions": _region_items_from_segment_visitors(region_visitors, 16),
+        "top_regions": _region_items_from_segment_visitors(region_visitors, region_visitors_daily, 16),
         "bot_traffic": {
             "families": _counter_items(bot_families, 8),
             "summary": _counter_items(bot_sources, 12),
@@ -866,7 +907,12 @@ def _analytics_event_metrics(date_keys: list[str], excluded_ip_hashes: set[str] 
     ][:10]
     return {
         "daily": daily,
-        "click_actions": _counter_items_with_uv(clicks, click_visitors, 16),
+        "click_actions": _counter_items_with_uv(
+            clicks,
+            click_visitors,
+            16,
+            daily_visitor_sets=click_uv_daily,
+        ),
         "click_trends": _counter_trends(
             date_keys,
             click_daily,
@@ -1182,14 +1228,17 @@ def _kpis(
     daily: list[dict[str, Any]],
     jobs: dict[str, Any],
     events: dict[str, Any],
+    range_uv: int | None = None,
     previous_daily: list[dict[str, Any]] | None = None,
+    previous_range_uv: int | None = None,
 ) -> dict[str, Any]:
     today = daily[-1] if daily else {}
     yesterday = daily[-2] if len(daily) >= 2 else _empty_daily("")
     previous_daily = previous_daily or []
     fields = [
         ("pv", "PV"),
-        ("uv", "UV"),
+        ("uv", "UV去重"),
+        ("daily_uv_sum", "日UV累计"),
         ("artifact_success", "解析成功"),
         ("button_clicks", "按钮点击"),
         ("builtin_ai_calls", "内置AI"),
@@ -1197,8 +1246,8 @@ def _kpis(
         ("analysis_jobs", "AI任务"),
         ("reports", "分享报告"),
     ]
-    range_totals = {field: _sum_field(daily, field) for field, _ in fields}
-    previous_totals = {field: _sum_field(previous_daily, field) for field, _ in fields}
+    range_totals = _period_totals(daily, fields, range_uv)
+    previous_totals = _period_totals(previous_daily, fields, previous_range_uv)
     has_previous = _period_has_data(previous_daily)
     range_compare = {
         field: _period_comparison(range_totals.get(field, 0), previous_totals.get(field, 0), label, has_previous)
@@ -1211,7 +1260,7 @@ def _kpis(
         "previous_range_totals": previous_totals,
         "range_compare": range_compare,
         "day_compare": {
-            field: _comparison(today.get(field, 0), yesterday.get(field, 0), label)
+            field: _comparison(_daily_field(today, field), _daily_field(yesterday, field), label)
             for field, label in fields
         },
         "period_compare": range_compare,
@@ -1309,8 +1358,10 @@ def _counter_items_with_uv(
     *,
     uv_as_value: bool = False,
     count_key: str = "requests",
+    daily_visitor_sets: dict[str, dict[str, set[str]]] | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    daily_uv = _daily_uv_totals(daily_visitor_sets)
     for name in set(counter) | set(visitor_sets):
         count = int(counter.get(name, 0))
         uv = len(visitor_sets.get(name, set()))
@@ -1318,6 +1369,7 @@ def _counter_items_with_uv(
             "name": name,
             "value": uv if uv_as_value else count,
             "uv": uv,
+            "daily_uv": daily_uv.get(name, 0),
         }
         if uv_as_value:
             row[count_key] = count
@@ -1330,6 +1382,14 @@ def _counter_items_with_uv(
         )
     )
     return rows[:limit] if limit is not None else rows
+
+
+def _daily_uv_totals(daily_visitors: dict[str, dict[str, set[str]]] | None) -> dict[str, int]:
+    totals: Counter[str] = Counter()
+    for values_by_name in (daily_visitors or {}).values():
+        for name, values in values_by_name.items():
+            totals[name] += len(values)
+    return dict(totals)
 
 
 def _counter_trends(
@@ -1795,6 +1855,7 @@ def _region_items_from_segments(segments: Counter[str], limit: int = 12) -> list
 
 def _region_items_from_segment_visitors(
     segment_visitors: dict[str, set[str]],
+    daily_segment_visitors: dict[str, dict[str, set[str]]] | None = None,
     limit: int = 12,
 ) -> list[dict[str, Any]]:
     segment_counts = Counter({segment: len(visitors) for segment, visitors in segment_visitors.items() if visitors})
@@ -1824,17 +1885,34 @@ def _region_items_from_segment_visitors(
                 if label and not _is_placeholder_region(label):
                     cache[segment] = {"label": label, "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
                     changed = True
+    labels_by_segment: dict[str, str] = {}
     visitors_by_region: dict[str, set[str]] = defaultdict(set)
     for segment, _ in top_segments:
         label, did_fetch = _region_label_for_segment(segment, cache, False)
         changed = changed or did_fetch
         if not label or _is_placeholder_region(label):
             continue
+        labels_by_segment[segment] = label
         visitors_by_region[label].update(segment_visitors.get(segment) or set())
     if changed:
         _write_ip_region_cache(cache)
+    daily_uv_by_region: Counter[str] = Counter()
+    for values_by_segment in (daily_segment_visitors or {}).values():
+        daily_region_visitors: dict[str, set[str]] = defaultdict(set)
+        for segment, visitors in values_by_segment.items():
+            label = labels_by_segment.get(segment)
+            if not label:
+                continue
+            daily_region_visitors[label].update(visitors)
+        for label, visitors in daily_region_visitors.items():
+            daily_uv_by_region[label] += len(visitors)
     rows = [
-        {"name": label, "value": len(visitors)}
+        {
+            "name": label,
+            "value": len(visitors),
+            "uv": len(visitors),
+            "daily_uv": int(daily_uv_by_region.get(label, 0)),
+        }
         for label, visitors in visitors_by_region.items()
         if visitors
     ]
@@ -2193,6 +2271,24 @@ def _period_comparison(current: int | float, previous: int | float, label: str, 
 
 def _sum_field(rows: list[dict[str, Any]], field: str) -> int:
     return int(sum(row.get(field, 0) or 0 for row in rows))
+
+
+def _period_totals(
+    rows: list[dict[str, Any]],
+    fields: list[tuple[str, str]],
+    range_uv: int | None = None,
+) -> dict[str, int]:
+    totals = {field: _sum_field(rows, field) for field, _ in fields}
+    totals["daily_uv_sum"] = _sum_field(rows, "uv")
+    if range_uv is not None:
+        totals["uv"] = int(range_uv or 0)
+    return totals
+
+
+def _daily_field(row: dict[str, Any], field: str) -> int:
+    if field == "daily_uv_sum":
+        return int(row.get("uv", 0) or 0)
+    return int(row.get(field, 0) or 0)
 
 
 def _period_has_data(rows: list[dict[str, Any]]) -> bool:
