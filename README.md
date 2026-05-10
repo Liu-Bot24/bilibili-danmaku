@@ -1,5 +1,7 @@
 # Bilibili 弹幕分析网站模板
 
+![Bilibili 弹幕分析网站预览](assets/github-preview.jpg)
+
 Languages: 简体中文 · [English](README.en.md)
 
 一个用于搭建 Bilibili 弹幕查询、下载、统计图表和 AI 分析网站的 Flask 模板。用户输入 BV 号或 Bilibili 视频链接后，可以获取弹幕数据、下载 CSV/TXT、查看互动分布，并用 OpenAI-compatible 模型生成弹幕内容分析或字幕深度分析。

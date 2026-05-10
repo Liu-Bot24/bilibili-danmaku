@@ -1,5 +1,7 @@
 # Bilibili Danmaku Analysis Website Template
 
+![Bilibili Danmaku Analysis Website preview](assets/github-preview.jpg)
+
 Languages: [简体中文](README.md) · English
 
 A Flask template for building a Bilibili danmaku search, download, charting, and AI analysis website. Users can enter a BV ID or Bilibili video URL, fetch danmaku data, download CSV/TXT files, inspect interaction charts, and generate AI-powered content analysis or subtitle-based deep analysis with an OpenAI-compatible model.
