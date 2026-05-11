@@ -183,6 +183,7 @@ CLICK_EVENT_LABELS = {
     "parse_danmaku_click": "解析弹幕按钮",
     "csv_download_click": "下载 CSV",
     "txt_download_click": "下载 TXT",
+    "plugin_store_click": "Chrome 商店安装",
     "plugin_github_click": "插件 GitHub 链接",
     "plugin_download_click": "下载插件包",
     "custom_api_key_click": "获取 API Key",
@@ -239,6 +240,7 @@ CLICK_TREND_PRIORITY = [
     "内置深度分析",
     "自主深度分析",
     "分享报告按钮",
+    "Chrome 商店安装",
     "插件 GitHub 链接",
     "获取 API Key",
 ]

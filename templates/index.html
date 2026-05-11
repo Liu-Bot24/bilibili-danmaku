@@ -722,9 +722,9 @@
 
       .plugin-actions {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 14px;
-          max-width: 860px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+          max-width: 960px;
           padding-top: 18px;
           border-top: 1px solid var(--line);
       }
@@ -732,8 +732,8 @@
       .plugin-action {
           display: grid;
           gap: 8px;
-          min-height: 104px;
-          padding: 17px 18px;
+          min-height: 94px;
+          padding: 16px;
           border: 1px solid rgba(23, 26, 31, 0.08);
           border-radius: 18px;
           background: rgba(255,255,255,0.68);
@@ -753,8 +753,8 @@
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 14px;
-          font-size: 18px;
+          gap: 10px;
+          font-size: 17px;
           font-weight: 780;
       }
 
@@ -767,7 +767,7 @@
       .plugin-action em {
           color: var(--primary-hover);
           font-style: normal;
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 760;
       }
 
@@ -2709,20 +2709,24 @@
               <p>适用于 Chrome 和 Chromium 内核浏览器，可辅助获取用于本站「字幕深度分析」功能的视频字幕。<br>也可独立使用，在 B 站视频页查看、搜索、复制和下载可用字幕，并支持双击字幕跳转到对应播放时间。</p>
           </div>
 
-          <div class="plugin-actions" aria-label="插件下载与项目地址">
-              <a class="plugin-action" href="{{ plugin_info.github_url }}" target="_blank" rel="noopener noreferrer" data-ops-event="plugin_github_click">
-                  <strong>GitHub 仓库 <em>打开</em></strong>
-                  <span>查看源码、README 和本地安装说明。</span>
+          <div class="plugin-actions" aria-label="插件安装、下载与项目地址">
+              <a class="plugin-action plugin-action--primary" href="{{ plugin_info.store_url }}" target="_blank" rel="noopener noreferrer" data-ops-event="plugin_store_click">
+                  <strong>Chrome 商店 <em>安装</em></strong>
+                  <span>从 Chrome Web Store 一键安装，后续自动更新。</span>
               </a>
-              <a class="plugin-action plugin-action--primary" href="{{ plugin_info.download_url }}" download="{{ plugin_info.download_filename }}" data-ops-event="plugin_download_click">
+              <a class="plugin-action" href="{{ plugin_info.download_url }}" download="{{ plugin_info.download_filename }}" data-ops-event="plugin_download_click">
                   <strong>下载插件包 <em>v{{ plugin_info.version }}</em></strong>
                   <span>下载后解压，在 Chrome 扩展程序页面加载解压后的文件夹。</span>
+              </a>
+              <a class="plugin-action" href="{{ plugin_info.github_url }}" target="_blank" rel="noopener noreferrer" data-ops-event="plugin_github_click">
+                  <strong>GitHub 仓库 <em>源码</em></strong>
+                  <span>查看源码、README 和本地安装说明。</span>
               </a>
           </div>
 
           <section class="plugin-section" aria-labelledby="pluginInstallTitle">
               <div class="plugin-section-head">
-                  <h2 id="pluginInstallTitle">安装教程</h2>
+                  <h2 id="pluginInstallTitle">手动安装教程</h2>
               </div>
               <ol class="plugin-steps">
                   <li>

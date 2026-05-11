@@ -71,12 +71,13 @@ SITE_BASE_URL = "https://danmu.liu-qi.cn"
 PLUGIN_VERSION = "1.0.2"
 PLUGIN_DOWNLOAD_FILENAME = "bili-lite-subtitle-store-upload-1.0.2.zip"
 PLUGIN_DOWNLOAD_PATH = f"/static/plugin/{PLUGIN_DOWNLOAD_FILENAME}"
+PLUGIN_CHROME_WEB_STORE_URL = "https://chromewebstore.google.com/detail/b-%E7%AB%99%E8%BD%BB%E9%87%8F%E5%AD%97%E5%B9%95%E5%8A%A9%E6%89%8B/ifhokpfhemfpnmgoajodifgamfbhioga"
 PLUGIN_GITHUB_URL = "https://github.com/Liu-Bot24/bili-lite-subtitle"
 INDEXNOW_KEY = "782ce4166c93b3da40b54acae9b34686"
 SOGOU_SITE_VERIFICATION = "d5smJSzPUQ"
 SITEMAP_PAGES = (
     {"path": "/", "lastmod": "2026-04-29", "changefreq": "weekly", "priority": "1.0"},
-    {"path": "/plugin", "lastmod": "2026-04-30", "changefreq": "monthly", "priority": "0.8"},
+    {"path": "/plugin", "lastmod": "2026-05-11", "changefreq": "monthly", "priority": "0.8"},
     {"path": "/faq", "lastmod": "2026-04-29", "changefreq": "monthly", "priority": "0.8"},
 )
 set_job_event_writer(default_job_store.add_event)
@@ -722,6 +723,7 @@ def _render_frontend(
         faq_items=FAQ_CONTENT,
         plugin_info={
             "version": PLUGIN_VERSION,
+            "store_url": PLUGIN_CHROME_WEB_STORE_URL,
             "github_url": PLUGIN_GITHUB_URL,
             "download_url": f"{SITE_BASE_URL}{PLUGIN_DOWNLOAD_PATH}",
             "download_filename": PLUGIN_DOWNLOAD_FILENAME,
@@ -792,7 +794,7 @@ def _build_seo_context(
     if is_plugin_page:
         plugin_url = f"{SITE_BASE_URL}/plugin"
         plugin_title = "bilibili轻量字幕助手｜B站字幕下载Chrome插件｜小刘BOT danmuku"
-        plugin_description = "bilibili轻量字幕助手是一款适用于 Chrome 和 Chromium 浏览器的 B站字幕下载插件，可在视频页查看、搜索、复制和下载字幕，并将字幕导入本站进行 AI 内容分析。"
+        plugin_description = "bilibili轻量字幕助手是一款适用于 Chrome 和 Chromium 浏览器的 B站字幕下载插件，可从 Chrome Web Store 安装，在视频页查看、搜索、复制和下载字幕，并将字幕导入本站进行 AI 内容分析。"
         plugin_keywords = "哔哩哔哩字幕插件,B站字幕下载,Bilibili字幕下载,B站字幕插件,Chrome字幕插件,Chrome扩展,浏览器插件,字幕助手,免费B站字幕下载,AI弹幕分析,小刘BOT danmuku"
         context.update(
             {
