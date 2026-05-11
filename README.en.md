@@ -76,7 +76,3 @@ The website creates danmaku files, subtitle uploads, shared reports, async job s
 - Store secrets, tokens, and private model configuration in server environment variables or private files.
 - Run the background worker as a separate process so long AI jobs do not block web requests.
 - Back up the state database and any shared reports you need to keep.
-
-## License
-
-Add a license that matches how you plan to distribute and operate the project.
