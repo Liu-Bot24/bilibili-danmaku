@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from multiprocessing import Queue as MPQueue
-from queue import Full
+from queue import Empty, Full
 from typing import Callable, Iterator
 
 
@@ -31,10 +31,25 @@ def job_logging_context(job_id: str, lease_token: str | None = None) -> Iterator
 
 def _put(kind: str, message: str) -> None:
     text = str(message)
+    item = {"type": kind, "message": text}
     try:
-        log_queue.put({"type": kind, "message": text}, timeout=1)
+        # Realtime progress logs are best-effort; a full browser log stream must
+        # never slow down the request that is doing the actual work. Keep the
+        # newest progress by dropping one stale queued item when the buffer is full.
+        log_queue.put_nowait(item)
     except Full:
-        pass
+        try:
+            log_queue.get_nowait()
+        except Empty:
+            pass
+        except Exception:
+            pass
+        try:
+            log_queue.put_nowait(item)
+        except Full:
+            pass
+        except Exception:
+            pass
     except Exception:
         pass
     job_context = _current_job_context.get()
