@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /
+Disallow: /logs
+Disallow: /ops
+Disallow: /api/
+Disallow: /api/v2/ops-dashboard
+Disallow: /api/v2/ops-events
+Disallow: /download
+Disallow: /downloads/
+Disallow: /upload_subtitle
+Disallow: /analyze_content
+Disallow: /deep_analysis
+Disallow: /subtitles/
+
+Sitemap: https://danmu.liu-qi.cn/sitemap.xml
+Sitemap: https://danmu.liu-qi.cn/sitemap-google.xml

@@ -1,0 +1,68 @@
+# Runtime state
+.state/
+.jobs/
+.artifact-index/
+.deploy-backups/
+backup/
+backups/
+.backup/
+*.bak
+
+# Machine-specific deployment configs
+config.py
+uwsgi.ini
+gunicorn_conf.py
+start.sh
+!config.template.py
+!uwsgi.template.ini
+!gunicorn_conf.template.py
+!start.template.sh
+
+# User/generated data
+downloads/
+reports/
+subtitles/
+var/indexnow_state.json
+*.sqlite*
+*.db
+*.db-wal
+*.db-shm
+
+# Logs and caches
+DEVELOPMENT_LOG.md
+*.log
+*.log.*
+log/
+logs/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+coverage.xml
+.DS_Store
+._*
+
+# Local environments and secrets
+venv/
+.venv/
+env/
+ENV/
+.env
+.env.*
+!.env.example
+.secrets/
+*.secret*
+*.secrets.*
+*secrets*.json
+baidu_verify_*.html
+
+# Source design/export assets
+static/report-card-bg.png
+
+# Build/test output
+dist/
+build/
+tmp/
+test-output/

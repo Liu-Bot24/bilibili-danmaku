@@ -1,0 +1,1886 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>运营看板｜小刘BOT danmuku</title>
+  <script src="{{ url_for('static', filename='vendor/echarts.min.js', v='20260430ops2') }}"></script>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --panel: #ffffff;
+      --panel-soft: #f1f5f7;
+      --ink: #14171a;
+      --muted: #66727d;
+      --line: #dfe6ea;
+      --line-soft: #edf1f3;
+      --accent: #0098c8;
+      --accent-soft: rgba(0, 152, 200, 0.12);
+      --green: #138a5b;
+      --red: #bd3930;
+      --amber: #a86f16;
+      --violet: #6955b8;
+      --max: 1440px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      letter-spacing: 0;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .shell {
+      min-height: 100vh;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      min-height: 64px;
+      padding: 0 28px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(246, 247, 248, 0.92);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 220px;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .brand:hover strong {
+      color: var(--accent);
+    }
+
+    .brand-mark {
+      position: relative;
+      width: 32px;
+      height: 32px;
+      border-radius: 11px;
+      background:
+        radial-gradient(circle at 28% 20%, rgba(255,255,255,0.9), transparent 42%),
+        linear-gradient(160deg, #0978a0, #00a1d6);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.22);
+      flex: 0 0 auto;
+    }
+
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      inset: 7px;
+      border: 1.6px solid rgba(255,255,255,0.74);
+      border-radius: 8px;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .brand span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .range-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .rangebar,
+    .date-range,
+    .admin-filter {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .rangebar button,
+    .date-range input,
+    .date-apply,
+    .refresh-button {
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--ink);
+      cursor: pointer;
+      transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+    }
+
+    .rangebar button:hover,
+    .date-range input:hover,
+    .date-apply:hover,
+    .refresh-button:hover {
+      border-color: rgba(0, 152, 200, 0.45);
+    }
+
+    .rangebar button.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .date-range input {
+      width: 132px;
+      color: var(--ink);
+    }
+
+    .date-range span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .admin-filter {
+      padding: 4px 6px 4px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .admin-filter label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--ink);
+      font-size: 12px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .admin-filter input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      accent-color: var(--accent);
+    }
+
+    .admin-filter input[type="text"] {
+      width: 136px;
+      min-height: 28px;
+      border: 0;
+      border-left: 1px solid var(--line-soft);
+      padding: 0 8px;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .admin-filter button {
+      min-height: 28px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fbfcfd;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .admin-filter button:hover {
+      border-color: rgba(0, 152, 200, 0.45);
+      color: var(--accent);
+    }
+
+    .freshness {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      min-width: 260px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: right;
+    }
+
+    .content {
+      width: min(var(--max), calc(100% - 56px));
+      margin: 0 auto;
+      padding: 24px 0 42px;
+    }
+
+    .section {
+      margin-top: 22px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 12px;
+    }
+
+    .section-head h1,
+    .section-head h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+      font-weight: 760;
+    }
+
+    .section-head p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid > * {
+      min-width: 0;
+    }
+
+    .kpi-grid {
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+
+    .panel {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 1px 2px rgba(20, 23, 26, 0.03);
+    }
+
+    .kpi {
+      min-height: 116px;
+      padding: 15px 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .kpi-label {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .kpi-title-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .heading-with-help {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .label-with-help {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    .help-tip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: #f8fafb;
+      color: var(--muted);
+      font-size: 9px;
+      line-height: 1;
+      font-weight: 700;
+      cursor: help;
+      user-select: none;
+      flex: 0 0 auto;
+      opacity: 0.82;
+    }
+
+    .kpi-help {
+      margin-top: 1px;
+    }
+
+    .help-tip:hover,
+    .help-tip:focus-visible {
+      border-color: rgba(0, 152, 200, 0.5);
+      color: var(--accent);
+      outline: none;
+      opacity: 1;
+    }
+
+    .floating-tooltip {
+      position: fixed;
+      z-index: 100;
+      max-width: min(320px, calc(100vw - 28px));
+      padding: 8px 10px;
+      border-radius: 7px;
+      background: #172028;
+      color: #fff;
+      box-shadow: 0 10px 28px rgba(20, 23, 26, 0.18);
+      font-size: 12px;
+      line-height: 1.45;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+
+    .floating-tooltip.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .kpi-value {
+      margin-top: 8px;
+      font-size: 26px;
+      line-height: 1.05;
+      font-weight: 780;
+    }
+
+    .delta {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .delta.up {
+      color: var(--red);
+    }
+
+    .delta.down {
+      color: var(--green);
+    }
+
+    .two-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .three-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .browser-source-grid {
+      align-items: stretch;
+    }
+
+    .browser-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .panel-head {
+      min-height: 56px;
+      padding: 14px 16px 8px;
+      border-bottom: 1px solid var(--line-soft);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .panel-tools {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+
+    .segmented {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 2px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafb;
+    }
+
+    .segmented button {
+      min-height: 28px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .segmented button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .panel-head h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 760;
+    }
+
+    .panel-head span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .chart {
+      min-width: 0;
+      width: 100%;
+      height: 330px;
+      min-height: 330px;
+    }
+
+    .chart.small {
+      height: 260px;
+      min-height: 260px;
+    }
+
+    .browser-chart {
+      flex: 1 1 auto;
+      height: auto;
+      min-height: 300px;
+    }
+
+    .chart.compact {
+      height: 300px;
+      min-height: 300px;
+    }
+
+    .bot-chart-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .bot-chart-grid .chart {
+      border-right: 1px solid var(--line-soft);
+    }
+
+    .bot-chart-grid .chart:last-child {
+      border-right: 0;
+    }
+
+    .table-wrap {
+      min-width: 0;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line-soft);
+      text-align: left;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      background: #fbfcfd;
+    }
+
+    td.numeric,
+    th.numeric {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border-radius: 8px;
+      background: var(--panel-soft);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .tag.good {
+      background: rgba(19, 138, 91, 0.11);
+      color: var(--green);
+    }
+
+    .tag.warn {
+      background: rgba(168, 111, 22, 0.12);
+      color: var(--amber);
+    }
+
+    .tag.bad {
+      background: rgba(189, 57, 48, 0.11);
+      color: var(--red);
+    }
+
+    .table-link {
+      color: var(--accent);
+      font-weight: 650;
+      text-decoration: none;
+    }
+
+    .table-link:hover {
+      text-decoration: underline;
+    }
+
+    .video-title-cell {
+      max-width: 760px;
+    }
+
+    .bvid-table th:nth-child(1),
+    .bvid-table td:nth-child(1) {
+      width: 150px;
+    }
+
+    .bvid-table th:nth-child(2),
+    .bvid-table td:nth-child(2) {
+      width: 38%;
+    }
+
+    .bvid-table th:nth-child(3),
+    .bvid-table td:nth-child(3) {
+      width: 180px;
+    }
+
+    .empty {
+      padding: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .loading {
+      opacity: 0.62;
+      pointer-events: none;
+    }
+
+    .loading-note {
+      color: var(--muted);
+    }
+
+    .error-box {
+      display: none;
+      margin-top: 14px;
+      padding: 12px 14px;
+      border: 1px solid rgba(189, 57, 48, 0.28);
+      border-radius: 8px;
+      color: var(--red);
+      background: rgba(189, 57, 48, 0.07);
+    }
+
+    @media (max-width: 1180px) {
+      .kpi-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .two-grid,
+      .three-grid,
+      .bot-chart-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .bot-chart-grid .chart {
+        border-right: 0;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .bot-chart-grid .chart:last-child {
+        border-bottom: 0;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .topbar {
+        position: relative;
+        min-height: auto;
+        padding: 14px 18px;
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .brand,
+      .freshness {
+        min-width: 0;
+      }
+
+      .freshness {
+        text-align: left;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .content {
+        width: min(100% - 28px, var(--max));
+        padding-top: 18px;
+      }
+
+      .kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .section-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .chart {
+        height: 280px;
+        min-height: 280px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="返回小刘BOT danmuku 首页">
+        <div class="brand-mark"></div>
+        <div>
+          <strong>小刘BOT danmuku</strong>
+          <span>运营看板</span>
+        </div>
+      </a>
+      <div class="range-controls">
+        <div class="rangebar" role="group" aria-label="快速筛选">
+          <button type="button" data-days="1">今日</button>
+          <button type="button" data-range="yesterday">昨日</button>
+          <button type="button" data-days="7">7天</button>
+          <button type="button" data-days="30" class="active">30天</button>
+          <button type="button" data-days="90">90天</button>
+        </div>
+        <div class="date-range" aria-label="自定义日期范围">
+          <input type="date" id="startDate" aria-label="开始日期">
+          <span>至</span>
+          <input type="date" id="endDate" aria-label="结束日期">
+          <button class="date-apply" type="button" id="applyDateButton">应用</button>
+        </div>
+        <div class="admin-filter" aria-label="过滤管理员IP">
+          <label for="adminIpEnabled">
+            <input type="checkbox" id="adminIpEnabled">
+            过滤管理员IP
+          </label>
+          <input type="text" id="adminIpInput" inputmode="decimal" aria-label="管理员 IP">
+          <button type="button" id="adminIpApply">应用</button>
+        </div>
+      </div>
+      <div class="freshness">
+        <span id="freshnessText">正在读取数据</span>
+        <button class="refresh-button" type="button" id="refreshButton">刷新</button>
+      </div>
+    </header>
+
+    <main class="content" id="dashboardRoot">
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h1>范围概览</h1>
+            <p id="scopeText">PV、UV去重与日UV累计已排除明显爬虫；Bot 流量单列统计。</p>
+          </div>
+        </div>
+        <div class="grid kpi-grid" id="kpiGrid"></div>
+        <div class="error-box" id="errorBox"></div>
+      </section>
+
+      <section class="section">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>运营趋势</h3>
+              <span>PV、日UV、解析成功、按钮点击、AI接口、任务记录、分享与 Bot</span>
+            </div>
+          </div>
+          <div id="trafficChart" class="chart"></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>核心行为</h3>
+              <span id="behaviorScopeText">服务端请求口径：解析、下载、AI 与分享</span>
+            </div>
+            <div class="panel-tools">
+              <div class="segmented" role="group" aria-label="核心行为口径">
+                <button type="button" data-behavior-mode="server" class="active">请求口径</button>
+                <button type="button" data-behavior-mode="click">点击埋点</button>
+              </div>
+            </div>
+          </div>
+          <div id="behaviorChart" class="chart compact"></div>
+          <div class="table-wrap">
+            <table>
+              <thead id="behaviorTableHead"></thead>
+              <tbody id="behaviorTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section grid two-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>AI 分析构成</h3>
+              <span>内置与自主模型的调用、UV去重与日UV累计</span>
+            </div>
+          </div>
+          <div id="aiAnalysisChart" class="chart small"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>AI 分析</th><th class="numeric">调用</th><th class="numeric">UV去重</th><th class="numeric">日UV累计</th></tr></thead>
+              <tbody id="aiAnalysisTable"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>页面入口</h3>
+              <span>主要页面访问</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>页面</th><th class="numeric">PV</th><th class="numeric">UV去重</th><th class="numeric">日UV累计</th></tr></thead>
+              <tbody id="pageTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section grid two-grid browser-source-grid">
+        <div class="panel browser-panel">
+          <div class="panel-head">
+            <div>
+              <h3>浏览器分布</h3>
+              <span>按范围去重 UV 排名</span>
+            </div>
+          </div>
+          <div id="uaChart" class="chart browser-chart"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>来源域名</h3>
+              <span>站外与直接访问</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>来源</th><th class="numeric">UV去重</th><th class="numeric">日UV累计</th><th class="numeric">访问</th></tr></thead>
+              <tbody id="referrerTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>地区分布</h3>
+              <span>Top 地区，其他地区补齐总量；不含 Bot 流量</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>地区</th><th class="numeric">UV去重</th><th class="numeric">日UV累计</th></tr></thead>
+              <tbody id="regionTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3 class="heading-with-help">热门 BV <span id="bvidHelpTip" class="help-tip" tabindex="0" aria-label="热门 BV 口径说明" data-tooltip="解析排行按成功生成结果排序，链接访问和分享报告只作为辅助线索。">?</span></h3>
+              <span id="bvidScopeText">按解析成功排序</span>
+            </div>
+            <div class="panel-tools">
+              <div class="segmented" role="group" aria-label="BV 榜单">
+                <button type="button" data-bvid-mode="all" class="active">解析排行</button>
+                <button type="button" data-bvid-mode="ai">AI 分析</button>
+              </div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="bvid-table">
+              <thead id="bvidTableHead"></thead>
+              <tbody id="bvidTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>Bot 与蜘蛛来源</h3>
+              <span>按搜索引擎、AI 公司与脚本来源拆分</span>
+            </div>
+          </div>
+          <div class="grid bot-chart-grid">
+            <div id="botFamilyChart" class="chart small"></div>
+            <div id="botSourceChart" class="chart small"></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>来源</th><th class="numeric">次数</th></tr></thead>
+              <tbody id="botTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section grid two-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>技术健康</h3>
+              <span>状态码、接口错误率和 404 情况</span>
+            </div>
+          </div>
+          <div id="statusChart" class="chart small"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>错误接口</th><th class="numeric">调用</th><th class="numeric">错误率</th></tr></thead>
+              <tbody id="apiTable"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>最近访问错误</h3>
+              <span>来自访问日志，跟随日期和管理员 IP 过滤</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>时间</th><th>信息</th></tr></thead>
+              <tbody id="errorTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>AI 任务健康</h3>
+              <span>模型、通道、兜底结果与失败状态</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>任务</th><th>模型/通道</th><th>结果</th><th class="numeric">数量</th></tr></thead>
+              <tbody id="jobTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const DEFAULT_ADMIN_IP = '111.194.217.185';
+    const ADMIN_FILTER_STORAGE_KEY = 'opsDashboardAdminIpFilter';
+    const state = {
+      mode: 'days',
+      days: 30,
+      startDate: '',
+      endDate: '',
+      filterAdminIp: true,
+      adminIp: DEFAULT_ADMIN_IP,
+      behaviorMode: 'server',
+      bvidMode: 'all',
+      data: null,
+      charts: {},
+      requestSeq: 0,
+      abortController: null,
+      activeRequestKey: '',
+      responseCache: new Map(),
+      prefetches: new Map(),
+      prefetchStarted: false
+    };
+    const DASHBOARD_CACHE_MS = 2 * 60 * 1000;
+    const palette = ['#0098c8', '#138a5b', '#a86f16', '#6955b8', '#bd3930', '#4d6f87', '#20262c', '#7b8791'];
+    const KPI_HELP = {
+      pv: '排除明显 Bot 后的页面访问次数；同一访客多次打开或刷新会重复计入。',
+      uv: '当前筛选范围内按访客去重的 UV；30 天内同一访客只计一次，用来看真实用户规模。',
+      daily_uv_sum: '把每天的 UV 相加；同一访客跨天访问会重复计入，用来看每日活跃热度。',
+      artifact_success: '成功生成弹幕结果的次数；对应用户提交 BV 后拿到可用结果。',
+      button_clicks: '前端埋点记录到的按钮或链接点击次数；只覆盖埋点上线后的真实点击。',
+      builtin_ai_calls: '内置 AI 分析接口的调用次数，来自访问日志。一次 AI 任务可能会触发多次接口调用、重试或分段处理，所以它通常不等于 AI 任务数。',
+      custom_ai_calls: '用户使用自主模型配置发起 AI 分析接口的调用次数，来自访问日志。',
+      analysis_jobs: '后台任务表里创建的 AI 分析任务数；更接近一次完整分析流程。一个任务可能对应多次内置或自主模型接口调用。',
+      reports: '分享报告相关记录数量，用来看报告保存和传播；下方行为表会拆分保存、读取等行为。',
+      bot_hits: '被识别为搜索引擎、AI Bot 或脚本工具的访问次数；不计入普通 UV、地区和用户归因。'
+    };
+    const BVID_HELP = {
+      section: '热门 BV 默认按解析成功排序。解析成功用于判断用户真正处理了哪些视频；链接访问用于判断结果是否被复访、分享、插件跳转或直链消费；分享报告用于判断报告传播。',
+      aiSection: 'AI 分析页签按后台任务表统计和 BV 关联的 AI 分析任务；这里的次数是任务数，不是模型接口调用次数。',
+      linkVisits: '结果页、下载页等 URL 中带 BV 的访问次数。常见于复访、分享链接、插件跳转、收藏夹或直链访问，用它判断结果消费和传播。',
+      aiCount: '这里统计的是该 BV 关联的 AI 分析任务数，不是模型接口调用次数。'
+    };
+
+    const $ = (selector) => document.querySelector(selector);
+    const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+
+    function setChartOption(id, option) {
+      const element = document.getElementById(id);
+      if (!element) return;
+      if (!window.echarts) {
+        element.innerHTML = '<div class="empty">图表库加载失败，表格数据仍可查看。</div>';
+        return;
+      }
+      if (!state.charts[id]) {
+        state.charts[id] = echarts.init(element);
+      }
+      state.charts[id].hideLoading();
+      state.charts[id].setOption(option, true);
+    }
+
+    function resizeChartsSoon() {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          Object.values(state.charts).forEach((instance) => instance && instance.resize && instance.resize());
+        });
+      });
+    }
+
+    function formatNumber(value) {
+      return Number(value || 0).toLocaleString('zh-CN');
+    }
+
+    function formatBytes(value) {
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let size = Number(value || 0);
+      let index = 0;
+      while (size >= 1024 && index < units.length - 1) {
+        size /= 1024;
+        index += 1;
+      }
+      return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+    }
+
+    function formatMs(value) {
+      const number = Number(value || 0);
+      if (!number) return '暂无';
+      if (number >= 1000) return `${(number / 1000).toFixed(2)}s`;
+      return `${Math.round(number)}ms`;
+    }
+
+    function deltaText(item) {
+      if (item.has_previous === false) return '无上一周期数据';
+      const diff = Number(item.diff || 0);
+      const pct = Number(item.pct || 0);
+      if (diff === 0) return '较上一周期持平';
+      const sign = diff > 0 ? '+' : '';
+      return `较上一周期 ${sign}${formatNumber(diff)} (${sign}${pct}%)`;
+    }
+
+    function deltaClass(item) {
+      if (item.has_previous === false) return '';
+      const diff = Number(item.diff || 0);
+      if (diff > 0) return 'up';
+      if (diff < 0) return 'down';
+      return '';
+    }
+
+    function renderKpis(data) {
+      const compare = data.kpis.range_compare || data.kpis.day_compare || {};
+      const fields = [
+        ['pv', 'PV', ''],
+        ['uv', 'UV去重', KPI_HELP.uv],
+        ['daily_uv_sum', '日UV累计', KPI_HELP.daily_uv_sum],
+        ['artifact_success', '解析成功', ''],
+        ['button_clicks', '按钮点击', ''],
+        ['builtin_ai_calls', '内置AI接口', KPI_HELP.builtin_ai_calls],
+        ['custom_ai_calls', '自主模型', KPI_HELP.custom_ai_calls],
+        ['analysis_jobs', 'AI任务记录', KPI_HELP.analysis_jobs],
+        ['reports', '分享报告', ''],
+        ['bot_hits', 'Bot 流量', KPI_HELP.bot_hits]
+      ];
+      $('#kpiGrid').innerHTML = fields.map(([key, label, help]) => {
+        const item = compare[key] || { current: 0, diff: 0, pct: 0 };
+        return `
+          <div class="panel kpi">
+            <div>
+              <div class="kpi-title-row">
+                <div class="kpi-label">${escapeHtml(label)}</div>
+                ${helpTip(help, 'kpi-help')}
+              </div>
+              <div class="kpi-value">${formatNumber(item.current)}</div>
+            </div>
+            <div class="delta ${deltaClass(item)}">${deltaText(item)}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderTrafficChart(data) {
+      const dates = data.daily.map((item) => item.date.slice(5));
+      const series = [
+        ['PV', 'pv'],
+        ['日UV', 'uv'],
+        ['解析成功', 'artifact_success'],
+        ['按钮点击', 'button_clicks'],
+        ['内置AI接口', 'builtin_ai_calls'],
+        ['自主模型', 'custom_ai_calls'],
+        ['分享报告', 'reports'],
+        ['Bot流量', 'bot_hits']
+      ].map(([name, key]) => ({
+        name,
+        type: 'line',
+        smooth: true,
+        symbolSize: 5,
+        data: data.daily.map((item) => item[key] || 0)
+      }));
+      setChartOption('trafficChart', {
+        color: palette,
+        tooltip: { trigger: 'axis' },
+        legend: { top: 8, textStyle: { color: '#66727d' } },
+        grid: { left: 42, right: 18, top: 52, bottom: 34 },
+        xAxis: { type: 'category', data: dates, boundaryGap: false, axisLine: { lineStyle: { color: '#dfe6ea' } } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
+        series: series.length ? series : [{ name: '暂无 AI 调用', type: 'bar', data: dates.map(() => 0) }]
+      });
+    }
+
+    function renderBehaviorPanel(data) {
+      const dates = data.daily.map((item) => item.date.slice(5));
+      const isClick = state.behaviorMode === 'click';
+      $$('.segmented button[data-behavior-mode]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.behaviorMode === state.behaviorMode);
+      });
+      const trends = isClick ? (data.click_trends || []) : (data.feature_trends || []);
+      const totals = isClick ? (data.click_actions || []) : (data.feature_actions || []);
+      const series = trends.map((item) => ({
+        name: item.name,
+        type: 'bar',
+        stack: isClick ? 'clicks' : 'server-actions',
+        emphasis: { focus: 'series' },
+        data: item.data || []
+      }));
+      $('#behaviorScopeText').textContent = isClick
+        ? '前端点击埋点：从埋点上线后开始累计'
+        : '服务端请求口径：解析、下载、AI 与分享';
+      setChartOption('behaviorChart', {
+        color: palette,
+        tooltip: { trigger: 'axis' },
+        legend: { top: 8, type: 'scroll', textStyle: { color: '#66727d' } },
+        grid: { left: 42, right: 18, top: 58, bottom: 34 },
+        xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#dfe6ea' } } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
+        series: series.length ? series : [{ name: isClick ? '暂无点击' : '暂无行为', type: 'bar', data: dates.map(() => 0) }]
+      });
+      $('#behaviorTableHead').innerHTML = `<tr><th>${isClick ? '按钮/链接' : '行为'}</th><th class="numeric">${isClick ? '点击' : '请求'}</th><th class="numeric">UV去重</th><th class="numeric">日UV累计</th></tr>`;
+      renderMetricTable('#behaviorTable', totals, isClick ? '按钮/链接' : '行为', [
+        { key: 'value', label: isClick ? '点击' : '请求' },
+        { key: 'uv', label: 'UV去重' },
+        { key: 'daily_uv', label: '日UV累计' }
+      ]);
+    }
+
+    function renderAiAnalysisChart(data) {
+      const dates = data.daily.map((item) => item.date.slice(5));
+      const series = (data.ai_analysis_trends || []).map((item) => ({
+        name: item.name,
+        type: 'bar',
+        stack: 'ai-analysis',
+        data: item.data || []
+      }));
+      setChartOption('aiAnalysisChart', {
+        color: palette,
+        tooltip: { trigger: 'axis' },
+        legend: { top: 4, type: 'scroll', textStyle: { color: '#66727d' } },
+        grid: { left: 40, right: 16, top: 52, bottom: 28 },
+        xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#dfe6ea' } } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
+        series: series.length ? series : [{ name: '暂无 AI 分析', type: 'bar', data: dates.map(() => 0) }]
+      });
+    }
+
+    function renderStatusChart(data) {
+      setChartOption('statusChart', {
+        color: ['#138a5b', '#0098c8', '#a86f16', '#bd3930', '#6955b8'],
+        tooltip: { trigger: 'item' },
+        legend: { bottom: 4, textStyle: { color: '#66727d' } },
+        series: [{
+          type: 'pie',
+          radius: ['46%', '72%'],
+          center: ['50%', '43%'],
+          label: { formatter: '{b}: {c}' },
+          data: (data.status_codes || []).map((item) => ({ name: item.name, value: item.value }))
+        }]
+      });
+    }
+
+    function renderUaChart(data) {
+      const browsers = (data.top_user_agents || []).slice(0, 8).reverse();
+      setChartOption('uaChart', {
+        color: ['#0098c8'],
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 112, right: 64, top: 22, bottom: 30 },
+        xAxis: {
+          type: 'value',
+          splitNumber: 4,
+          axisLabel: {
+            color: '#66727d',
+            hideOverlap: true,
+            formatter: (value) => Number(value) >= 1000 ? `${Number(value) / 1000}k` : value
+          },
+          splitLine: { lineStyle: { color: '#edf1f3' } }
+        },
+        yAxis: {
+          type: 'category',
+          data: browsers.map((item) => item.name),
+          axisLine: { lineStyle: { color: '#dfe6ea' } },
+          axisLabel: { color: '#66727d', interval: 0, width: 98, overflow: 'truncate' }
+        },
+        series: [{
+          name: 'UV去重',
+          type: 'bar',
+          data: browsers.map((item) => item.value || 0),
+          label: {
+            show: true,
+            position: 'right',
+            color: '#66727d',
+            formatter: (item) => `${formatNumber(item.value)} UV`
+          },
+          barMaxWidth: 18
+        }]
+      });
+    }
+
+    function renderBotChart(data) {
+      const dates = data.daily.map((item) => item.date.slice(5));
+      const familySeries = ((data.bot_traffic || {}).family_trends || []).map((item) => ({
+        name: item.name,
+        type: 'bar',
+        stack: 'bot-family',
+        data: item.data || []
+      }));
+      setChartOption('botFamilyChart', {
+        color: ['#6955b8', '#0098c8', '#a86f16', '#4d6f87'],
+        tooltip: { trigger: 'axis' },
+        legend: { top: 4, type: 'scroll', textStyle: { color: '#66727d' } },
+        grid: { left: 40, right: 16, top: 52, bottom: 28 },
+        xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#dfe6ea' } } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#edf1f3' } } },
+        series: familySeries.length ? familySeries : [{ name: '暂无 Bot', type: 'bar', data: dates.map(() => 0) }]
+      });
+
+      const sources = ((data.bot_traffic || {}).summary || []).slice(0, 10).reverse();
+      setChartOption('botSourceChart', {
+        color: ['#0098c8'],
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 210, right: 58, top: 24, bottom: 30 },
+        xAxis: {
+          type: 'value',
+          splitNumber: 5,
+          axisLabel: {
+            color: '#66727d',
+            hideOverlap: true,
+            formatter: (value) => Number(value) >= 1000 ? `${Number(value) / 1000}k` : value
+          },
+          splitLine: { lineStyle: { color: '#edf1f3' } }
+        },
+        yAxis: {
+          type: 'category',
+          data: sources.map((item) => item.name),
+          axisLine: { lineStyle: { color: '#dfe6ea' } },
+          axisLabel: { color: '#66727d', interval: 0, width: 190, overflow: 'break' }
+        },
+        series: [{
+          name: '来源次数',
+          type: 'bar',
+          data: sources.map((item) => item.value || 0),
+          label: { show: true, position: 'right', color: '#66727d' },
+          barMaxWidth: 18
+        }]
+      });
+    }
+
+    function renderSimpleTable(selector, rows, firstLabel, valueLabel) {
+      renderMetricTable(selector, rows, firstLabel, [{ key: 'value', label: valueLabel }]);
+    }
+
+    function renderMetricTable(selector, rows, firstLabel, columns) {
+      const target = $(selector);
+      if (!rows || rows.length === 0) {
+        target.innerHTML = `<tr><td colspan="${columns.length + 1}"><div class="empty">暂无数据</div></td></tr>`;
+        return;
+      }
+      target.innerHTML = rows.map((item) => `
+        <tr>
+          <td>${escapeHtml(item.name || firstLabel)}</td>
+          ${columns.map((column) => `<td class="numeric">${formatNumber(item[column.key] || 0)}</td>`).join('')}
+        </tr>
+      `).join('');
+    }
+
+    function renderBvidPanel(data) {
+      const isAi = state.bvidMode === 'ai';
+      $('#bvidScopeText').textContent = isAi ? '按 AI 任务记录统计' : '按解析成功排序';
+      setHelpTip($('#bvidHelpTip'), bvidHelpText(data, isAi));
+      $$('.segmented button[data-bvid-mode]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.bvidMode === state.bvidMode);
+      });
+      renderBvidTable(isAi ? (data.ai_bvids || []) : (data.top_bvids || []), isAi);
+    }
+
+    function bvidHelpText(data, isAi) {
+      const coverage = ((data.meta || {}).coverage || {});
+      if (isAi) {
+        const jobStart = dateOnly(coverage.job_start);
+        const parts = [BVID_HELP.aiSection];
+        if (jobStart) parts.push(`AI任务记录自 ${jobStart} 起记录。`);
+        return parts.join('');
+      }
+      const parts = [BVID_HELP.section];
+      const artifactStart = dateOnly(coverage.artifact_start);
+      const reportStart = dateOnly(coverage.report_start);
+      if (artifactStart) parts.push(`解析成功自 ${artifactStart} 起记录。`);
+      if (reportStart) parts.push(`分享报告自 ${reportStart} 起记录。`);
+      return parts.join('');
+    }
+
+    function renderBvidTable(rows, isAi = false) {
+      const target = $('#bvidTable');
+      const head = $('#bvidTableHead');
+      head.innerHTML = isAi
+        ? `<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th>AI分析</th><th>视频</th><th class="numeric">${labelWithHelp('次数', BVID_HELP.aiCount)}</th></tr>`
+        : `<tr><th>BV号</th><th>视频标题</th><th>UP主</th><th class="numeric">解析成功</th><th class="numeric">${labelWithHelp('链接访问', BVID_HELP.linkVisits)}</th><th class="numeric">分享报告</th><th>视频</th></tr>`;
+      if (!rows || rows.length === 0) {
+        target.innerHTML = `<tr><td colspan="${isAi ? 6 : 7}"><div class="empty">暂无 BV 数据</div></td></tr>`;
+        return;
+      }
+      target.innerHTML = rows.map((item) => {
+        const bvid = item.name || '';
+        const title = item.title || '标题暂未获取';
+        const author = item.author || '未知';
+        const url = item.url || `https://www.bilibili.com/video/${encodeURIComponent(bvid)}`;
+        if (isAi) {
+          const parts = [];
+          if (item.content) parts.push(`内容 ${formatNumber(item.content)}`);
+          if (item.deep) parts.push(`深度 ${formatNumber(item.deep)}`);
+          if (item.succeeded) parts.push(`成功 ${formatNumber(item.succeeded)}`);
+          if (item.failed) parts.push(`失败 ${formatNumber(item.failed)}`);
+          return `
+            <tr>
+              <td>${escapeHtml(bvid)}</td>
+              <td class="video-title-cell" title="${escapeHtml(title)}">${escapeHtml(middleEllipsis(title, 34))}</td>
+              <td title="${escapeHtml(author)}">${escapeHtml(middleEllipsis(author, 18))}</td>
+              <td>${escapeHtml(parts.join(' / ') || 'AI分析')}</td>
+              <td><a class="table-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">查看视频</a></td>
+              <td class="numeric">${formatNumber(item.value || 0)}</td>
+            </tr>
+          `;
+        }
+        return `
+          <tr>
+            <td>${escapeHtml(bvid)}</td>
+            <td class="video-title-cell" title="${escapeHtml(title)}">${escapeHtml(middleEllipsis(title, 34))}</td>
+            <td title="${escapeHtml(author)}">${escapeHtml(middleEllipsis(author, 18))}</td>
+            <td class="numeric">${formatNumber(item.parses || item.value || 0)}</td>
+            <td class="numeric">${formatNumber(item.link_visits || item.requests || 0)}</td>
+            <td class="numeric">${formatNumber(item.reports || 0)}</td>
+            <td><a class="table-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">查看视频</a></td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderTables(data) {
+      renderMetricTable('#pageTable', data.top_pages, '页面', [
+        { key: 'value', label: 'PV' },
+        { key: 'uv', label: 'UV去重' },
+        { key: 'daily_uv', label: '日UV累计' }
+      ]);
+      renderMetricTable('#referrerTable', data.top_referrers, '来源', [
+        { key: 'value', label: 'UV去重' },
+        { key: 'daily_uv', label: '日UV累计' },
+        { key: 'visits', label: '访问' }
+      ]);
+      renderMetricTable('#regionTable', data.top_regions, '地区', [
+        { key: 'value', label: 'UV去重' },
+        { key: 'daily_uv', label: '日UV累计' }
+      ]);
+      renderMetricTable('#aiAnalysisTable', data.ai_analysis_breakdown || data.ai_mode_details, 'AI 分析', [
+        { key: 'value', label: '调用' },
+        { key: 'uv', label: 'UV去重' },
+        { key: 'daily_uv', label: '日UV累计' }
+      ]);
+      renderBvidPanel(data);
+
+      $('#apiTable').innerHTML = (data.api_endpoints || []).length
+        ? data.api_endpoints.map((item) => `
+            <tr>
+              <td>${escapeHtml(item.name)}</td>
+              <td class="numeric">${formatNumber(item.value)}</td>
+              <td class="numeric"><span class="tag ${Number(item.error_rate) > 5 ? 'bad' : 'good'}">${item.error_rate}%</span></td>
+            </tr>
+          `).join('')
+        : '<tr><td colspan="3"><div class="empty">当前范围内没有 API 错误</div></td></tr>';
+
+      const jobRows = (data.jobs.model_status || []);
+      $('#jobTable').innerHTML = jobRows.length
+        ? jobRows.map((item) => `
+            <tr>
+              <td>${escapeHtml(item.kind)}</td>
+              <td>${escapeHtml(item.model || '未记录模型')}</td>
+              <td><span class="tag ${jobStatusClass(item.status)}">${escapeHtml(item.status)}</span></td>
+              <td class="numeric">${formatNumber(item.count)}</td>
+            </tr>
+          `).join('')
+        : '<tr><td colspan="4"><div class="empty">暂无任务</div></td></tr>';
+
+      const botRows = [
+        ...(((data.bot_traffic || {}).summary || []).map((item) => ({ name: item.name, value: item.value })))
+      ];
+      renderSimpleTable('#botTable', botRows, 'Bot 来源', '次数');
+
+      $('#errorTable').innerHTML = (data.recent_errors || []).length
+        ? data.recent_errors.map((item) => `
+            <tr>
+              <td>${escapeHtml(item.ts)}</td>
+              <td>${escapeHtml(item.message)}</td>
+            </tr>
+          `).join('')
+        : '<tr><td colspan="2"><div class="empty">当前范围内没有访问错误</div></td></tr>';
+    }
+
+    function renderMeta(data) {
+      const meta = data.meta || {};
+      const latency = data.latency || {};
+      const active = data.kpis.active_jobs || {};
+      $('#freshnessText').textContent = `更新 ${formatDateTime(meta.generated_at)} · p95 ${formatMs(latency.p95_ms)} · 队列 ${formatNumber(active.queued || 0)}/${formatNumber(active.running || 0)}`;
+      const filter = meta.admin_filter || {};
+      const filterText = filter.enabled ? `，已过滤管理员 IP ${escapeHtml((filter.ips || []).join('、'))}` : '';
+      const totals = ((data.kpis || {}).range_totals || {});
+      const uvText = `UV去重 ${formatNumber(totals.uv || 0)}，日UV累计 ${formatNumber(totals.daily_uv_sum || 0)}`;
+      $('#scopeText').textContent = `${meta.range_start} 至 ${meta.range_end}，${uvText}，Bot流量 ${formatNumber(totals.bot_hits || 0)} 次，访问日志 ${formatBytes((meta.access_log || {}).size_bytes || 0)}，按钮点击 ${formatNumber((data.daily || []).reduce((sum, item) => sum + Number(item.button_clicks || 0), 0))} 次${filterText}。`;
+    }
+
+    function render(data) {
+      renderMeta(data);
+      renderKpis(data);
+      renderTrafficChart(data);
+      renderBehaviorPanel(data);
+      renderAiAnalysisChart(data);
+      renderStatusChart(data);
+      renderUaChart(data);
+      renderBotChart(data);
+      renderTables(data);
+      resizeChartsSoon();
+    }
+
+    function currentSelection() {
+      if (state.mode === 'yesterday') {
+        return { preset: 'yesterday' };
+      }
+      if (state.mode === 'custom') {
+        return { startDate: state.startDate, endDate: state.endDate };
+      }
+      return { days: state.days };
+    }
+
+    function buildDashboardRequest(selection = currentSelection()) {
+      if (typeof selection === 'number') {
+        selection = { days: selection };
+      }
+      const params = new URLSearchParams();
+      const request = {
+        mode: 'days',
+        days: 30,
+        startDate: '',
+        endDate: '',
+        label: '30天',
+        params,
+        key: '',
+        expectedStart: '',
+        expectedEnd: '',
+        expectedFilter: Boolean(state.filterAdminIp && state.adminIp),
+        expectedAdminIp: state.adminIp
+      };
+      if (selection.preset === 'yesterday') {
+        const yesterday = localDate(-1);
+        request.mode = 'yesterday';
+        request.startDate = yesterday;
+        request.endDate = yesterday;
+        request.label = '昨日';
+        request.expectedStart = yesterday;
+        request.expectedEnd = yesterday;
+        params.set('start', yesterday);
+        params.set('end', yesterday);
+      } else if (selection.startDate || selection.endDate) {
+        let startDate = selection.startDate || $('#startDate').value || localDate(-29);
+        let endDate = selection.endDate || $('#endDate').value || localDate(0);
+        if (startDate > endDate) {
+          [startDate, endDate] = [endDate, startDate];
+        }
+        request.mode = 'custom';
+        request.startDate = startDate;
+        request.endDate = endDate;
+        request.label = `${startDate} 至 ${endDate}`;
+        request.expectedStart = startDate;
+        request.expectedEnd = endDate;
+        params.set('start', startDate);
+        params.set('end', endDate);
+      } else {
+        const days = Number(selection.days || state.days || 30);
+        request.mode = 'days';
+        request.days = days;
+        request.label = days === 1 ? '今日' : `${days}天`;
+        request.expectedStart = localDate(-(days - 1));
+        request.expectedEnd = localDate(0);
+        request.startDate = request.expectedStart;
+        request.endDate = request.expectedEnd;
+        params.set('days', days);
+      }
+      if (state.filterAdminIp && state.adminIp) {
+        params.set('exclude_ip', state.adminIp);
+      }
+      request.key = params.toString();
+      return request;
+    }
+
+    function applyRequestSelection(request) {
+      state.mode = request.mode;
+      state.days = request.days || state.days;
+      state.startDate = request.startDate || '';
+      state.endDate = request.endDate || '';
+      if (request.startDate) $('#startDate').value = request.startDate;
+      if (request.endDate) $('#endDate').value = request.endDate;
+      updateRangeControls();
+    }
+
+    function updateRangeControls() {
+      $$('.rangebar button').forEach((button) => {
+        const active = button.dataset.range === 'yesterday'
+          ? state.mode === 'yesterday'
+          : state.mode === 'days' && Number(button.dataset.days) === Number(state.days);
+        button.classList.toggle('active', active);
+      });
+    }
+
+    function loadAdminFilterPrefs() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(ADMIN_FILTER_STORAGE_KEY) || '{}');
+        if (typeof saved.enabled === 'boolean') {
+          state.filterAdminIp = saved.enabled;
+        }
+        if (saved.ip) {
+          state.adminIp = String(saved.ip);
+        }
+      } catch (error) {
+        state.filterAdminIp = true;
+        state.adminIp = DEFAULT_ADMIN_IP;
+      }
+      updateAdminFilterControls();
+    }
+
+    function saveAdminFilterPrefs() {
+      localStorage.setItem(ADMIN_FILTER_STORAGE_KEY, JSON.stringify({
+        enabled: state.filterAdminIp,
+        ip: state.adminIp || DEFAULT_ADMIN_IP
+      }));
+    }
+
+    function updateAdminFilterControls() {
+      $('#adminIpEnabled').checked = Boolean(state.filterAdminIp);
+      $('#adminIpInput').value = state.adminIp || DEFAULT_ADMIN_IP;
+    }
+
+    function applyAdminFilter() {
+      state.filterAdminIp = $('#adminIpEnabled').checked;
+      state.adminIp = ($('#adminIpInput').value || DEFAULT_ADMIN_IP).trim();
+      updateAdminFilterControls();
+      saveAdminFilterPrefs();
+      state.responseCache.clear();
+      state.prefetches.clear();
+      state.prefetchStarted = false;
+      loadDashboard(currentSelection());
+    }
+
+    function setDashboardLoading(request) {
+      state.data = null;
+      $('#dashboardRoot').classList.add('loading');
+      $('#errorBox').style.display = 'none';
+      $('#freshnessText').textContent = `正在读取 ${request.label}`;
+      $('#scopeText').textContent = `正在读取 ${request.label}，返回数据与当前筛选匹配后才会更新看板。`;
+      $('#kpiGrid').innerHTML = Array.from({ length: 10 }).map(() => `
+        <div class="panel kpi">
+          <div>
+            <div class="kpi-label loading-note">读取中</div>
+            <div class="kpi-value">--</div>
+          </div>
+          <div class="delta">等待当前筛选结果</div>
+        </div>
+      `).join('');
+      [
+        ['#behaviorTable', 4],
+        ['#pageTable', 4],
+        ['#referrerTable', 4],
+        ['#regionTable', 3],
+        ['#aiAnalysisTable', 4],
+        ['#apiTable', 3],
+        ['#jobTable', 4],
+        ['#botTable', 2],
+        ['#errorTable', 2],
+        ['#bvidTable', state.bvidMode === 'ai' ? 6 : 7]
+      ].forEach(([selector, colspan]) => {
+        const target = $(selector);
+        if (target) target.innerHTML = `<tr><td colspan="${colspan}"><div class="empty">正在读取当前筛选范围...</div></td></tr>`;
+      });
+      Object.values(state.charts).forEach((instance) => {
+        if (instance && instance.showLoading) {
+          instance.showLoading('default', { text: '正在读取当前筛选范围...' });
+        }
+      });
+    }
+
+    document.addEventListener('mouseover', (event) => {
+      const target = event.target.closest('.help-tip');
+      if (target) showHelpTooltip(target);
+    });
+    document.addEventListener('focusin', (event) => {
+      const target = event.target.closest('.help-tip');
+      if (target) showHelpTooltip(target);
+    });
+    document.addEventListener('mouseout', (event) => {
+      if (event.target.closest('.help-tip')) hideHelpTooltip();
+    });
+    document.addEventListener('focusout', (event) => {
+      if (event.target.closest('.help-tip')) hideHelpTooltip();
+    });
+    window.addEventListener('scroll', hideHelpTooltip, { passive: true });
+    window.addEventListener('resize', hideHelpTooltip);
+
+    function responseMatchesRequest(data, request) {
+      const meta = data.meta || {};
+      if (request.expectedStart && meta.range_start !== request.expectedStart) return false;
+      if (request.expectedEnd && meta.range_end !== request.expectedEnd) return false;
+      if (request.mode === 'days' && Number(meta.days || 0) !== Number(request.days || 0)) return false;
+      const filter = meta.admin_filter || {};
+      const expectedFilter = Boolean(request.expectedFilter);
+      if (Boolean(filter.enabled) !== expectedFilter) return false;
+      if (expectedFilter && !(filter.ips || []).includes(request.expectedAdminIp)) return false;
+      return true;
+    }
+
+    function scheduleDashboardPrefetch() {
+      if (state.prefetchStarted) return;
+      state.prefetchStarted = true;
+      const selections = [1, { preset: 'yesterday' }, 7, 90];
+      selections.forEach((selection, index) => {
+        window.setTimeout(() => prefetchDashboard(selection), 450 + index * 850);
+      });
+    }
+
+    async function prefetchDashboard(selection) {
+      const request = buildDashboardRequest(selection);
+      if (state.responseCache.has(request.key) || state.prefetches.has(request.key)) return;
+      const promise = fetch(`/api/v2/ops-dashboard?${request.key}`, { cache: 'no-store' })
+        .then((response) => response.json().then((payload) => ({ response, payload })))
+        .then(({ response, payload }) => {
+          if (!response.ok || !payload.success) return;
+          if (!responseMatchesRequest(payload.data || {}, request)) return;
+          state.responseCache.set(request.key, { cachedAt: Date.now(), data: payload.data });
+        })
+        .catch(() => {})
+        .finally(() => {
+          state.prefetches.delete(request.key);
+        });
+      state.prefetches.set(request.key, promise);
+      await promise;
+    }
+
+    async function loadDashboard(selection = currentSelection(), options = {}) {
+      const request = buildDashboardRequest(selection);
+      if (state.abortController) {
+        state.abortController.abort();
+      }
+      const requestId = state.requestSeq + 1;
+      state.requestSeq = requestId;
+      state.activeRequestKey = request.key;
+      applyRequestSelection(request);
+      const cached = state.responseCache.get(request.key);
+      if (!options.force && cached && Date.now() - cached.cachedAt < DASHBOARD_CACHE_MS) {
+        state.abortController = null;
+        $('#dashboardRoot').classList.remove('loading');
+        Object.values(state.charts).forEach((instance) => instance && instance.hideLoading && instance.hideLoading());
+        state.data = cached.data;
+        render(cached.data);
+        scheduleDashboardPrefetch();
+        return;
+      }
+      const pendingPrefetch = state.prefetches.get(request.key);
+      if (!options.force && pendingPrefetch) {
+        state.abortController = null;
+        setDashboardLoading(request);
+        try {
+          await pendingPrefetch;
+          if (requestId !== state.requestSeq || request.key !== state.activeRequestKey) {
+            return;
+          }
+          const ready = state.responseCache.get(request.key);
+          if (!ready) {
+            throw new Error('当前筛选仍在计算，请稍后刷新');
+          }
+          state.data = ready.data;
+          render(ready.data);
+          scheduleDashboardPrefetch();
+        } catch (error) {
+          if (requestId === state.requestSeq && request.key === state.activeRequestKey) {
+            $('#errorBox').textContent = error.message || String(error);
+            $('#errorBox').style.display = 'block';
+          }
+        } finally {
+          if (requestId === state.requestSeq && request.key === state.activeRequestKey) {
+            $('#dashboardRoot').classList.remove('loading');
+            Object.values(state.charts).forEach((instance) => instance && instance.hideLoading && instance.hideLoading());
+          }
+        }
+        return;
+      }
+      const controller = new AbortController();
+      state.abortController = controller;
+      setDashboardLoading(request);
+      try {
+        const fetchParams = new URLSearchParams(request.key);
+        if (options.force) fetchParams.set('refresh', '1');
+        const response = await fetch(`/api/v2/ops-dashboard?${fetchParams.toString()}`, { cache: 'no-store', signal: controller.signal });
+        const payload = await response.json();
+        if (requestId !== state.requestSeq || request.key !== state.activeRequestKey) {
+          return;
+        }
+        if (!response.ok || !payload.success) {
+          throw new Error((payload.error && payload.error.message) || '看板数据读取失败');
+        }
+        if (!responseMatchesRequest(payload.data || {}, request)) {
+          throw new Error('接口返回范围与当前筛选不一致，已拒绝渲染这批数据');
+        }
+        state.data = payload.data;
+        state.responseCache.set(request.key, { cachedAt: Date.now(), data: payload.data });
+        render(payload.data);
+        scheduleDashboardPrefetch();
+      } catch (error) {
+        if (error && error.name === 'AbortError') {
+          return;
+        }
+        if (requestId !== state.requestSeq || request.key !== state.activeRequestKey) {
+          return;
+        }
+        $('#errorBox').textContent = error.message || String(error);
+        $('#errorBox').style.display = 'block';
+      } finally {
+        if (requestId === state.requestSeq && request.key === state.activeRequestKey) {
+          $('#dashboardRoot').classList.remove('loading');
+          if (state.abortController === controller) {
+            state.abortController = null;
+          }
+          Object.values(state.charts).forEach((instance) => instance && instance.hideLoading && instance.hideLoading());
+        }
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      })[char]);
+    }
+
+    function helpTip(text, extraClass = '') {
+      if (!text) return '';
+      const escaped = escapeHtml(text);
+      const classes = ['help-tip', extraClass].filter(Boolean).join(' ');
+      return `<span class="${escapeHtml(classes)}" tabindex="0" aria-label="${escaped}" data-tooltip="${escaped}">?</span>`;
+    }
+
+    function labelWithHelp(label, text) {
+      return `<span class="label-with-help"><span>${escapeHtml(label)}</span>${helpTip(text)}</span>`;
+    }
+
+    function setHelpTip(element, text) {
+      if (!element) return;
+      element.dataset.tooltip = text || '';
+      element.setAttribute('aria-label', text || '说明');
+    }
+
+    function tooltipElement() {
+      let element = document.getElementById('floatingTooltip');
+      if (!element) {
+        element = document.createElement('div');
+        element.id = 'floatingTooltip';
+        element.className = 'floating-tooltip';
+        document.body.appendChild(element);
+      }
+      return element;
+    }
+
+    function showHelpTooltip(target) {
+      const text = target && target.dataset ? target.dataset.tooltip : '';
+      if (!text) return;
+      const tooltip = tooltipElement();
+      tooltip.textContent = text;
+      tooltip.classList.add('visible');
+      const targetRect = target.getBoundingClientRect();
+      const tooltipRect = tooltip.getBoundingClientRect();
+      let left = targetRect.left + targetRect.width / 2 - tooltipRect.width / 2;
+      left = Math.max(14, Math.min(left, window.innerWidth - tooltipRect.width - 14));
+      let top = targetRect.bottom + 8;
+      if (top + tooltipRect.height > window.innerHeight - 14) {
+        top = Math.max(14, targetRect.top - tooltipRect.height - 8);
+      }
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+    }
+
+    function hideHelpTooltip() {
+      const tooltip = document.getElementById('floatingTooltip');
+      if (tooltip) tooltip.classList.remove('visible');
+    }
+
+    function formatDateTime(value) {
+      if (!value) return '';
+      return String(value).replace('T', ' ').slice(0, 19);
+    }
+
+    function dateOnly(value) {
+      if (!value) return '';
+      return String(value).slice(0, 10);
+    }
+
+    function middleEllipsis(value, maxLength) {
+      const text = String(value || '');
+      if (text.length <= maxLength) return text;
+      const keep = Math.max(4, Math.floor((maxLength - 1) / 2));
+      return `${text.slice(0, keep)}…${text.slice(-keep)}`;
+    }
+
+    function jobStatusClass(value) {
+      const text = String(value || '');
+      if (text.includes('仍失败') || text === '失败') return 'bad';
+      if (text.includes('兜底') || text === '运行中' || text === '排队中') return 'warn';
+      return 'good';
+    }
+
+    function localDate(offsetDays = 0) {
+      const date = new Date();
+      date.setDate(date.getDate() + offsetDays);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function debounce(fn, wait) {
+      let timer = null;
+      return function debounced() {
+        clearTimeout(timer);
+        timer = setTimeout(fn, wait);
+      };
+    }
+
+    $$('.rangebar button').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (button.dataset.range === 'yesterday') {
+          loadDashboard({ preset: 'yesterday' });
+          return;
+        }
+        loadDashboard(Number(button.dataset.days));
+      });
+    });
+    $$('.segmented button[data-behavior-mode]').forEach((button) => {
+      button.addEventListener('click', () => {
+        state.behaviorMode = button.dataset.behaviorMode || 'server';
+        if (state.data) renderBehaviorPanel(state.data);
+      });
+    });
+    $$('.segmented button[data-bvid-mode]').forEach((button) => {
+      button.addEventListener('click', () => {
+        state.bvidMode = button.dataset.bvidMode || 'all';
+        if (state.data) renderBvidPanel(state.data);
+      });
+    });
+    $('#applyDateButton').addEventListener('click', () => {
+      const startDate = $('#startDate').value;
+      const endDate = $('#endDate').value;
+      if (!startDate || !endDate) {
+        $('#errorBox').textContent = '请选择开始和结束日期';
+        $('#errorBox').style.display = 'block';
+        return;
+      }
+      loadDashboard({ startDate, endDate });
+    });
+    $('#adminIpApply').addEventListener('click', applyAdminFilter);
+    $('#adminIpEnabled').addEventListener('change', applyAdminFilter);
+    $('#adminIpInput').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        applyAdminFilter();
+      }
+    });
+    $('#refreshButton').addEventListener('click', () => loadDashboard(currentSelection(), { force: true }));
+    window.addEventListener('resize', debounce(() => {
+      Object.values(state.charts).forEach((instance) => instance && instance.resize());
+    }, 160));
+    $('#startDate').value = localDate(-29);
+    $('#endDate').value = localDate(0);
+    loadAdminFilterPrefs();
+    loadDashboard(30);
+  </script>
+</body>
+</html>
