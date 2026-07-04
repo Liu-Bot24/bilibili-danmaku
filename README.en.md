@@ -1,5 +1,7 @@
 # Bilibili Danmaku Analysis Website Template
 
+![Stars](https://img.shields.io/github/stars/Liu-Bot24/bilibili-danmaku?style=flat&label=Stars&cache=20260704) ![Forks](https://img.shields.io/github/forks/Liu-Bot24/bilibili-danmaku?style=flat&label=Forks&cache=20260704) ![Views 14d](https://github-stats.liu-qi.cn/api/badge/Liu-Bot24/bilibili-danmaku/views14d.svg?v=4) ![Clones 14d](https://github-stats.liu-qi.cn/api/badge/Liu-Bot24/bilibili-danmaku/clones14d.svg?v=4)
+
 ![Bilibili Danmaku Analysis Website preview](assets/github-preview.jpg)
 
 Languages: [简体中文](README.md) · English
